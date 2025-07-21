@@ -26,3 +26,7 @@
     comment: 'Manual check'
   check_for_executable_flag:
     comment: 'Manual check'
+  check_for_binary_files_without_source_code:
+    comment: 'Manual check'
+  check_for_importing_modules:
+    comment: 'Manual check'
