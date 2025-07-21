@@ -1,0 +1,47 @@
+/* Intrinsic grid layout for CIMplicity app */
+.app-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr; /* 25% / 50% / 25% split */
+  min-height: 100vh;
+  width: 100%; /* Use 100% to fill container, not 100vw */
+  background: #fff;
+}
+.left-col, .center-col, .right-col {
+  min-width: 0;
+  overflow: auto; /* Prevent content from breaking layout */
+}
+.left-col {
+  /* background: linear-gradient(135deg, #0f172a 60%, #1e293b 100%);
+  color: #fff; */
+  border-right: 1px solid #23304a;
+  box-shadow: 2px 0 8px 0 rgba(0,0,0,0.1);
+  padding: 24px;
+}
+.center-col {
+  padding: 32px;
+}
+.right-col {
+  background: rgba(245,246,247,0.85);
+  border-left: 1px solid #e0e7ef;
+  box-shadow: -2px 0 8px 0 rgba(0,0,0,0.05);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 1024px) { /* Adjust breakpoint for better responsiveness */
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+  .left-col, .right-col {
+    box-shadow: none;
+    border: none;
+  }
+}
+
+/* Add dark mode */
+@media (prefers-color-scheme: dark) {
+    body { background: #000; color: #fff; }
+}
+
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } 

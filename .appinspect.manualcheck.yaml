@@ -1,0 +1,28 @@
+  check_for_console_log_injection_in_javascript:
+    comment: 'Manual check'
+  check_for_iframe_in_javascript:
+    comment: 'Manual check'
+  check_for_insecure_http_request_in_javascript:
+    comment: 'Manual check'
+  check_for_remote_code_execution_in_javascript:
+    comment: 'Manual check'
+  check_for_builtin_functions:
+    comment: 'Manual check'
+  check_for_data_compression_and_archiving:
+    comment: 'Manual check'
+  check_for_file_and_directory_access:
+    comment: 'Manual check'
+  check_for_generic_operating_system_services:
+    comment: 'Manual check'
+  check_for_plain_text_credentials_in_python:
+    comment: 'Manual check'
+  check_for_environment_variable_use_in_python:
+    comment: 'Manual check'
+  check_for_insecure_http_calls_in_python:
+    comment: 'Manual check'
+  check_for_secret_disclosure:
+    comment: 'Manual check'
+  check_for_supported_tls:
+    comment: 'Manual check'
+  check_for_executable_flag:
+    comment: 'Manual check'

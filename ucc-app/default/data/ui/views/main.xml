@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<view template="cim-plicity:/templates/main.html" type="html">
+	<label>Main</label>
+</view>

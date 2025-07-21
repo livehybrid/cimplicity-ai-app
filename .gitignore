@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+lerna-debug.log
+node_modules
+npm-debug.log
+test-reports
+coverage_report
+yarn-error.log
+licenses.json
+functional-temp
+splunktional-temp
+packages/cim-plicity/src/main/resources/splunk
+build
+packages/cim-plicity/stage
+packages/cim-plicity/stage-old/
+*.tar.gz

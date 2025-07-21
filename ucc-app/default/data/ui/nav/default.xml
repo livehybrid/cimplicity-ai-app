@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<nav>
+    <view name="main" default="true"/>
+    <view name="configuration"/>
+    <view name="search"/>
+</nav>

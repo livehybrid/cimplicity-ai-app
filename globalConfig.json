@@ -1,0 +1,189 @@
+{
+    "pages": {
+        "configuration": {
+            "tabs": [
+                {
+                    "name": "ai_configuration",
+                    "title": "AI Configuration",
+                    "entity": [
+                        {
+                            "type": "text",
+                            "label": "LLM API Endpoint",
+                            "field": "api_endpoint",
+                            "help": "e.g. https://openrouter.ai/api/v1/chat/completions",
+                            "required": true,
+                            "encrypted": false,
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of URL should be between 1 and 255",
+                                    "minLength": 1,
+                                    "maxLength": 255
+                                }
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "label": "API key",
+                            "field": "api_key",
+                            "help": "API key",
+                            "required": true,
+                            "encrypted": true,
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of API key should be between 1 and 255",
+                                    "minLength": 1,
+                                    "maxLength": 255
+                                }
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "label": "Model",
+                            "field": "model",
+                            "help": "Model name",
+                            "required": true,
+                            "encrypted": false,
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of API key should be between 1 and 50",
+                                    "minLength": 1,
+                                    "maxLength": 50
+                                }
+                            ]
+                        },
+                        {
+                            "type": "multipleSelect",
+                            "label": "PII Detectors",
+                            "field": "pii_detectors",
+                            "help": "Select detectors to enable for PII scanning",
+                            "required": false,
+                            "options": {
+                                "delimiter": "|",
+                                "items": [
+                                    {
+                                        "value": "CredentialDetector",
+                                        "label": "Credential"
+                                    },
+                                    {
+                                        "value": "CreditCardDetector",
+                                        "label": "Credit Card"
+                                    },
+                                    {
+                                        "value": "DriversLicenceDetector",
+                                        "label": "Driver's Licence"
+                                    },
+                                    {
+                                        "value": "EmailDetector",
+                                        "label": "Email"
+                                    },
+                                    {
+                                        "value": "en_GB.NationalInsuranceNumberDetector",
+                                        "label": "UK National Insurance Number"
+                                    },
+                                    {
+                                        "value": "PhoneDetector",
+                                        "label": "Phone"
+                                    },
+                                    {
+                                        "value": "PostalCodeDetector",
+                                        "label": "Postal Code"
+                                    },
+                                    {
+                                        "value": "en_US.SocialSecurityNumberDetector",
+                                        "label": "US Social Security Number"
+                                    },
+                                    {
+                                        "value": "en_GB.TaxReferenceNumberDetector",
+                                        "label": "UK Tax Reference Number"
+                                    },
+                                    {
+                                        "value": "TwitterDetector",
+                                        "label": "Twitter Handle"
+                                    },
+                                    {
+                                        "value": "UrlDetector",
+                                        "label": "URL"
+                                    },
+                                    {
+                                        "value": "VehicleLicencePlateDetector",
+                                        "label": "Vehicle Licence Plate"
+                                    },
+                                    {
+                                        "value": "DateOfBirthDetector",
+                                        "label": "Date of Birth"
+                                    },
+                                    {
+                                        "value": "SkypeDetector",
+                                        "label": "Skype"
+                                    },
+                                    {
+                                        "value": "TaggedEvaluationFilthDetector",
+                                        "label": "Tagged Evaluation Filth"
+                                    },
+                                    {
+                                        "value": "TextBlobNameDetector",
+                                        "label": "TextBlob Name"
+                                    },
+                                    {
+                                        "value": "UserSuppliedFilthDetector",
+                                        "label": "User Supplied Filth"
+                                    },
+                                    {
+                                        "value": "IpAddressDetector",
+                                        "label": "IP Address"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "loggingTab"
+                }
+            ],
+            "title": "Configuration",
+            "description": "Set up your add-on"
+        },
+        "dashboard": {
+            "panels": [
+                {
+                    "name": "default"
+                }
+            ]
+        }
+    },
+    "meta": {
+        "name": "cim-plicity",
+        "restRoot": "cim-plicity",
+        "version": "0.0.0+0a19330",
+        "displayName": "CIMPlicity AI",
+        "schemaVersion": "0.0.9",
+        "supportedThemes": [
+            "light",
+            "dark"
+        ],
+        "os-dependentLibraries": [
+            {
+                "name": "regex",
+                "version": "2024.11.6",
+                "dependencies": false,
+                "platform": "manylinux_2_17_x86_64",
+                "python_version": "3.9",
+                "os": "linux",
+                "target": "3rdparty/linux_lib_py39"
+            },
+            {
+                "name": "numpy",
+                "version": "1.26.4",
+                "dependencies": true,
+                "platform": "manylinux_2_17_x86_64",
+                "python_version": "3.9",
+                "os": "linux",
+                "target": "3rdparty/linux_lib_py39"
+            }
+        ]
+    }
+}

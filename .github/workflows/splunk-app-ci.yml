@@ -1,0 +1,155 @@
+name: Splunk App CI/CD
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*.*.*"
+
+permissions:
+  pull-requests: write
+  actions: write
+  checks: write
+  contents: write
+
+jobs:
+  package:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          cache-dependency-path: yarn.lock
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install UCC Framework
+        run: pip install splunk-add-on-ucc-framework
+
+      - name: Determine Version
+        id: version
+        shell: bash
+        run: |
+          SHORT_COMMIT_HASH=$(git rev-parse --short HEAD)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            TAG_VERSION="1.0.0"
+          fi
+          VERSION_WITH_HASH="${TAG_VERSION}+${SHORT_COMMIT_HASH}"
+          echo "VERSION_WITH_HASH=${VERSION_WITH_HASH}" >> $GITHUB_OUTPUT
+          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Generate UCC components
+        run: |
+          # Generate UCC framework components
+          ucc-gen --source ucc-app -o build/
+          
+          # Copy generated files to React app structure
+          cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
+
+      - name: Build Splunk app
+        run: yarn run build
+
+      - name: Update app version
+        working-directory: packages/cim-plicity/stage
+        run: |
+          # Update app.conf with the calculated version (both [id] and [launcher] stanzas)
+          if [ -f "default/app.conf" ]; then
+            sed -i "s/version = .*/version = ${{ steps.version.outputs.TAG_VERSION }}/g" default/app.conf
+          fi
+          
+          # Update app.manifest version if it exists
+          if [ -f "app.manifest" ]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.TAG_VERSION }}\"/g" app.manifest
+          fi
+          
+          # Update package id to match directory name without version suffix
+          if [ -f "default/app.conf" ]; then
+            sed -i "s/id = .*/id = cim-plicity/g" default/app.conf
+          fi
+          
+          # Add reload trigger for splunk_create.conf if missing
+          if [ -f "default/app.conf" ] && [ -f "default/splunk_create.conf" ]; then
+            if ! grep -q "\[triggers\]" default/app.conf; then
+              echo "" >> default/app.conf
+              echo "[triggers]" >> default/app.conf
+              echo "reload.splunk_create = simple" >> default/app.conf
+            elif ! grep -q "reload.splunk_create" default/app.conf; then
+              sed -i '/^\[triggers\]/a reload.splunk_create = simple' default/app.conf
+            fi
+          fi
+          
+
+
+      - name: Generate Package tarball
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ -d "packages/cim-plicity/stage" ]; then
+            # Create a properly named directory structure for the tarball
+            mkdir -p temp-package/cim-plicity
+            cp -r packages/cim-plicity/stage/* temp-package/cim-plicity/
+            rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/f2cmap/.f2py_f2cmap || true
+            rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/assumed_shape/.f2py_f2cmap || true
+            mkdir -p dist
+            # Create tarball with proper directory structure (avoids ./ prefixes and naming issues)
+            cd temp-package
+            ucc-gen package --path cim-plicity/ -o ../dist/
+            cd ..
+
+            # Cleanup
+            rm -rf temp-package
+          else
+            echo "Error: stage directory not found after build"
+            exit 1
+          fi
+
+      - name: Upload Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # - name: Upload Stage Directory for Inspection
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: stage-contents
+      #     path: packages/cim-plicity/stage/
+
+  appinspect:
+    name: quality-appinspect
+    needs: package
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
+    with:
+      tags: "cloud,future,private_victoria"
+    secrets:
+      token: "${{ secrets.GITHUB_TOKEN }}"
+
+  quality-appinspect-api:
+    name: quality-appinspect-api
+    needs:
+      - appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
+  
+  publish-gh:
+    permissions:
+      contents: write
+    needs:
+      - appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main 
