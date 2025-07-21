@@ -55,9 +55,10 @@ jobs:
       - name: Generate UCC components
         run: |
           # Generate UCC framework components
-          ucc-gen --source ucc-app -o build/
+          ucc-gen build --source ucc-app -o build/
           
           # Copy generated files to React app structure
+          mkdir -p packages/cim-plicity/src/main/resources/splunk/
           cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
 
       - name: Build Splunk app
