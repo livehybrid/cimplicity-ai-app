@@ -1,0 +1,2 @@
+  check_for_binary_files_without_source_code:
+    comment: 'bin/_lsprof.cpython-39-x86_64-linux-gnu.so is usually part of Python distro but not within Splunk and is required by this app'
