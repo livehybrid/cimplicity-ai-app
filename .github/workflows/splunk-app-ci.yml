@@ -105,7 +105,9 @@ jobs:
             cp -r packages/cim-plicity/stage/* temp-package/cim-plicity/
             # Some fixes to the package due to appinspect
             rm -rf temp-package/cim-plicity/lib/sklearn/metrics/_pairwise_distances_reduction/meson.build || true
-            rm -rf temp-package/cim-plicity/**/*.pyc || true
+            # Remove all .pyc files and __pycache__ directories recursively
+            find temp-package/cim-plicity -name "*.pyc" -type f -delete || true
+            find temp-package/cim-plicity -name "__pycache__" -type d -exec rm -rf {} + || true
             rm -rf temp-package/cim-plicity/lib/**/*.so || true
             rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/f2cmap/.f2py_f2cmap || true
             rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/assumed_shape/.f2py_f2cmap || true
