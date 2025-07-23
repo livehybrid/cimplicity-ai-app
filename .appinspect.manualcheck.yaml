@@ -30,3 +30,21 @@
     comment: 'Manual check'
   check_for_importing_modules:
     comment: 'Manual check'
+  check_all_python_files_are_well_formed:
+    comment: 'Manual check'
+  check_for_shell:
+    comment: 'Manual check'
+  check_for_optional_operating_system_services:
+    comment: 'Manual check'
+  check_python_untrusted_xml_functions:
+    comment: 'Manual check'
+  check_for_data_persistence:
+    comment: 'Manual check'
+  check_built_in_import_function:
+    comment: 'Manual check'
+  check_for_hidden_python_files:
+    comment: 'Manual check'
+  check_for_python_runtime_services:
+    comment: 'Manual check'
+  check_for_interprocess_communication_and_networking:
+    comment: 'Manual check'
