@@ -2,7 +2,10 @@
 
 ## Overview
 
-CIMplicity AI is an intelligent Splunk app that automates the data onboarding process using AI-powered field extraction, CIM mapping, and PII detection. It helps Splunk administrators quickly configure new data sources with minimal manual effort.
+<img src="docs/images/splunk-build-a-thon.png" width="250px"/>
+
+CIMplicity AI is an intelligent Splunk app that automates the data onboarding process using AI-powered field extraction, CIM mapping, and PII detection. It helps Splunk administrators quickly configure new data sources with minimal manual effort.  
+Check out the app at SplunkBase [https://splunkbase.splunk.com/app/7945](https://splunkbase.splunk.com/app/7945).
 
 ### Key Features
 
