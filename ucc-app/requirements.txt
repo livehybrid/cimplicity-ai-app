@@ -5,7 +5,7 @@ numpy==1.23.5
 srsly
 pydantic
 typing-extensions>=4.10.0
-thinc>=8.1.0,<9.0.0
+thinc>=8.1.0,<10.0.0
 spacy>=3.4.0,<4.0.0
 presidio-analyzer>=2.2.38,<3.0.0
 https://files.pythonhosted.org/packages/49/34/3a500af78444426b83d9045e5f11b94e0a7249323c843fc26d653c6c888c/spacy-3.8.7-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
