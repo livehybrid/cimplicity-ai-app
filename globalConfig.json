@@ -169,7 +169,7 @@
             {
                 "name": "regex",
                 "version": "2024.11.6",
-                "dependencies": false,
+                "dependencies": true,
                 "platform": "manylinux_2_17_x86_64",
                 "python_version": "3.9",
                 "os": "linux",
