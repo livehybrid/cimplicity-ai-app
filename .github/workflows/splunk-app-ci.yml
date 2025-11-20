@@ -128,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: dist
-          path: dist/
+          path: dist/*
 
       # - name: Upload Stage Directory for Inspection
       #   uses: actions/upload-artifact@v5
