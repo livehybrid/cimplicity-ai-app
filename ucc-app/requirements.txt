@@ -1,7 +1,7 @@
 splunktaucclib
 splunk-sdk
 solnlib
-numpy==1.23.5
+numpy==2.0.2
 srsly
 pydantic
 typing-extensions>=4.10.0
