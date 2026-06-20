@@ -71,19 +71,27 @@ def _parse_model_file(filepath):
     fields = []
     seen = set()
 
+    def _add(field):
+        fname = field.get("fieldName") or field.get("name")
+        if not fname or fname in seen:
+            return
+        seen.add(fname)
+        description = (
+            field.get("comment")
+            or field.get("description")
+            or field.get("displayName")
+            or fname
+        )
+        fields.append({"name": fname, "description": description})
+
     for obj in data.get("objects", []):
+        # Extracted (raw) fields on the object, including inherited ones
         for field in obj.get("fields", []):
-            fname = field.get("fieldName") or field.get("name")
-            if not fname or fname in seen:
-                continue
-            seen.add(fname)
-            description = (
-                field.get("comment")
-                or field.get("description")
-                or field.get("displayName")
-                or fname
-            )
-            fields.append({"name": fname, "description": description})
+            _add(field)
+        # Calculated / derived fields (eval, lookups, etc.) are real CIM fields too
+        for calc in obj.get("calculations", []):
+            for field in calc.get("outputFields", []):
+                _add(field)
 
     return (model_key, fields) if fields else None
 
