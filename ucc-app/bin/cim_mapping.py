@@ -41,34 +41,8 @@ ADDON_NAME = 'cim-plicity'
 logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}_cim_mapping.log'])
 logging.basicConfig(filename=logfile, level=logging.DEBUG)
 
-# Define CIM fields statically within the script
-CIM_FIELDS = {
-    "authentication": [
-        {"name": "user", "description": "Username or user identifier"},
-        {"name": "src_ip", "description": "Source IP address"},
-        {"name": "dest_ip", "description": "Destination IP address"},
-        {"name": "action", "description": "Authentication action (success, failure)"},
-        {"name": "app", "description": "Application name"},
-        {"name": "session_id", "description": "Session identifier"}
-    ],
-    "network_traffic": [
-        {"name": "src_ip", "description": "Source IP address"},
-        {"name": "dest_ip", "description": "Destination IP address"},
-        {"name": "src_port", "description": "Source port number"},
-        {"name": "dest_port", "description": "Destination port number"},
-        {"name": "protocol", "description": "Network protocol"},
-        {"name": "bytes_in", "description": "Bytes received"},
-        {"name": "bytes_out", "description": "Bytes sent"}
-    ],
-    "web": [
-        {"name": "clientip", "description": "Client IP address"},
-        {"name": "uri_path", "description": "URI path requested"},
-        {"name": "status", "description": "HTTP status code"},
-        {"name": "method", "description": "HTTP method"},
-        {"name": "user_agent", "description": "User agent string"},
-        {"name": "referer", "description": "HTTP referer"}
-    ]
-}
+from load_cim_models import load_cim_fields
+CIM_FIELDS = load_cim_fields()
 
 class CimMappingHandler(PersistentServerConnectionApplication):
     def __init__(self, _command_line, _command_arg):
