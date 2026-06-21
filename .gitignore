@@ -14,3 +14,4 @@ build
 packages/cim-plicity/stage
 packages/cim-plicity/stage-old/
 *.tar.gz
+ucc-app/bin/__pycache__/
