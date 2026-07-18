@@ -21,15 +21,17 @@ import logging
 from os.path import dirname
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
-from solnlib import conf_manager
 
-# Setup paths
+# Setup paths — the app's lib/ must be on sys.path BEFORE importing solnlib
+# (which is bundled there), or the import fails with ModuleNotFoundError.
 ta_name = 'cim-plicity'
 pattern = re.compile(r'[\\/]etc[\\/]apps[\\/][^\\/]+[\\/]bin[\\/]?$')
 new_paths = [path for path in sys.path if not pattern.search(path) or ta_name in path]
 new_paths.append(os.path.join(dirname(dirname(__file__)), "lib"))
 new_paths.insert(0, os.path.sep.join([os.path.dirname(__file__), ta_name]))
 sys.path = new_paths
+
+from solnlib import conf_manager
 
 ADDON_NAME = 'cim-plicity'
 
