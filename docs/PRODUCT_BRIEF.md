@@ -68,7 +68,7 @@ The app features a modern user interface built with [Splunk UI ReactJS component
 
 ## Constraints
 
-- Components will leverage local processing (Python scripts, well-defined algorithms, and potentially lightweight local libraries) and will not solely rely on external large language models (LLMs) or cloud-based AI services—offering this as a capability if desired, ensuring data privacy and feasibility.
+- Components will leverage local processing (Python scripts, well-defined algorithms, and potentially lightweight local libraries) and will not solely rely on external large language models (LLMs) or cloud-based AI services, offering this as a capability if desired, ensuring data privacy and feasibility.
 - PII detection in the MVP will be regex-based and primarily for awareness; it’s not a guaranteed redaction or compliance solution on its own.
 - Initial focus on common log formats like JSON, key-value pairs, and basic unstructured text.
 - Development time is limited by the hackathon timeframe, prioritizing a functional MVP.

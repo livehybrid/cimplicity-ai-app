@@ -40,11 +40,11 @@ def _find_cim_app_path():
     cim_path = os.path.join(splunk_home, "etc", "apps", "Splunk_SA_CIM")
     if os.path.isdir(cim_path):
         return cim_path
-    # Try searching sibling apps directory (handles non-standard installs)
+    # Try searching sibling apps directory (handles non-standard casing)
     apps_dir = os.path.join(splunk_home, "etc", "apps")
     if os.path.isdir(apps_dir):
         for entry in os.listdir(apps_dir):
-            if entry.lower() in ("splunk_sa_cim", "da-ess-contentupdate"):
+            if entry.lower() == "splunk_sa_cim":
                 candidate = os.path.join(apps_dir, entry)
                 if os.path.isdir(candidate):
                     return candidate
@@ -76,8 +76,12 @@ def _parse_model_file(filepath):
         if not fname or fname in seen:
             return
         seen.add(fname)
+        # Real Splunk_SA_CIM files nest the text: {"comment": {"description": "..."}}
+        comment = field.get("comment")
+        if isinstance(comment, dict):
+            comment = comment.get("description")
         description = (
-            field.get("comment")
+            comment
             or field.get("description")
             or field.get("displayName")
             or fname
@@ -99,32 +103,42 @@ def _parse_model_file(filepath):
 def load_cim_fields():
     """
     Load CIM field definitions from the installed Splunk_SA_CIM app.
-    Falls back to the hardcoded set if the app is not found.
-    Returns dict: {model_key: [{"name": str, "description": str}]}
+    Falls back to the hardcoded set if the app is not found or unreadable.
+    Never raises. Returns dict: {model_key: [{"name": str, "description": str}]}
     """
-    cim_app_path = _find_cim_app_path()
-    if not cim_app_path:
-        log.info("Splunk_SA_CIM not found; using fallback CIM field definitions")
+    try:
+        cim_app_path = _find_cim_app_path()
+        if not cim_app_path:
+            log.info("Splunk_SA_CIM not found; using fallback CIM field definitions")
+            return _FALLBACK_CIM_FIELDS
+
+        cim_fields = {}
+        found_dir = False
+        # Splunk_SA_CIM ships the model JSON in default/data/models;
+        # local/data/models carries per-install overrides and wins per file.
+        for conf_dir in ("default", "local"):
+            models_dir = os.path.join(cim_app_path, conf_dir, "data", "models")
+            if not os.path.isdir(models_dir):
+                continue
+            found_dir = True
+            for filename in os.listdir(models_dir):
+                if not filename.endswith(".json"):
+                    continue
+                result = _parse_model_file(os.path.join(models_dir, filename))
+                if result:
+                    model_key, fields = result
+                    cim_fields[model_key] = fields
+                    log.debug("Loaded CIM model '%s' (%d fields)", model_key, len(fields))
+
+        if not found_dir:
+            log.warning("No CIM models directory under %s; using fallback", cim_app_path)
+            return _FALLBACK_CIM_FIELDS
+        if not cim_fields:
+            log.warning("No CIM models parsed from %s; using fallback", cim_app_path)
+            return _FALLBACK_CIM_FIELDS
+
+        log.info("Loaded %d CIM models from Splunk_SA_CIM", len(cim_fields))
+        return cim_fields
+    except Exception as e:
+        log.error("Failed to load CIM models: %s; using fallback", e, exc_info=True)
         return _FALLBACK_CIM_FIELDS
-
-    models_dir = os.path.join(cim_app_path, "appserver", "static", "data", "models")
-    if not os.path.isdir(models_dir):
-        log.warning("CIM models directory not found at %s; using fallback", models_dir)
-        return _FALLBACK_CIM_FIELDS
-
-    cim_fields = {}
-    for filename in os.listdir(models_dir):
-        if not filename.endswith(".json"):
-            continue
-        result = _parse_model_file(os.path.join(models_dir, filename))
-        if result:
-            model_key, fields = result
-            cim_fields[model_key] = fields
-            log.debug("Loaded CIM model '%s' (%d fields)", model_key, len(fields))
-
-    if not cim_fields:
-        log.warning("No CIM models parsed from %s; using fallback", models_dir)
-        return _FALLBACK_CIM_FIELDS
-
-    log.info("Loaded %d CIM models from Splunk_SA_CIM", len(cim_fields))
-    return cim_fields

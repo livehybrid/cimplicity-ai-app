@@ -118,9 +118,9 @@ class PiiDetectionTester:
                 'type': f.detector_name,
                 'text': f.text,
                 'score': 1.0,
-                'start': f.start,
+                'start': f.beg,
                 'end': f.end,
-                'field': self.infer_field_name(text_to_analyze, f.start, f.end, f.detector_name),
+                'field': self.infer_field_name(text_to_analyze, f.beg, f.end, f.detector_name),
                 'examples': []
             } for f in filtered_results]
             
@@ -187,7 +187,7 @@ def test_pii_detection_standalone():
     test_cases = [
         {
             'name': 'Email and IP',
-            'text': 'User john.doe@example.com logged in from 192.168.1.100 at 2024-01-15 10:30:00'
+            'text': 'User john.doe@example.com logged in from 203.0.113.10 at 2024-01-15 10:30:00'
         },
         {
             'name': 'Credit Card',

@@ -20,10 +20,6 @@ import requests
 import logging
 from os.path import dirname
 
-import splunk.entity
-import splunk.Intersplunk
-import splunklib.client as client
-import splunklib.results as results
 from splunk.persistconn.application import PersistentServerConnectionApplication
 from solnlib import conf_manager
 
@@ -37,19 +33,30 @@ sys.path = new_paths
 
 ADDON_NAME = 'cim-plicity'
 
-# Setup logging
+# Setup logging (level set from the [logging] stanza per request, default INFO)
 logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}_cim_mapping.log'])
-logging.basicConfig(filename=logfile, level=logging.DEBUG)
+logging.basicConfig(filename=logfile, level=logging.INFO)
 
 from load_cim_models import load_cim_fields
-CIM_FIELDS = load_cim_fields()
+
+# Lazy-loaded so a failure cannot break module import and a handler recycle
+# picks up a newly installed Splunk_SA_CIM without a full splunkd restart.
+_CIM_FIELDS_CACHE = None
+
+
+def _get_cim_fields():
+    global _CIM_FIELDS_CACHE
+    if _CIM_FIELDS_CACHE is None:
+        _CIM_FIELDS_CACHE = load_cim_fields()
+    return _CIM_FIELDS_CACHE
+
 
 class CimMappingHandler(PersistentServerConnectionApplication):
     def __init__(self, _command_line, _command_arg):
         super(CimMappingHandler, self).__init__()
-        self.service = None
 
-    def get_ai_secret(self):
+    def get_ai_settings(self):
+        """Return the ai_configuration stanza as a dict ({} on failure)."""
         try:
             cfm = conf_manager.ConfManager(
                 self.system_session_key,
@@ -57,14 +64,30 @@ class CimMappingHandler(PersistentServerConnectionApplication):
                 realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
             )
             account_conf_file = cfm.get_conf("cim-plicity_settings")
-            return account_conf_file.get("ai_configuration").get("api_key")
+            return account_conf_file.get("ai_configuration") or {}
+        except Exception as e:
+            logging.error(f"Could not read ai_configuration settings: {e}", exc_info=True)
+            return {}
+
+    def apply_log_level(self):
+        """Honour the [logging] log_level setting (default INFO)."""
+        try:
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
+            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+        except Exception:
+            logging.getLogger().setLevel(logging.INFO)
+
+    def get_ai_secret(self):
+        try:
+            return self.get_ai_settings().get("api_key")
         except Exception as e:
             logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
 
     def call_openrouter(self, api_key, extracted_fields, cim_model):
-        
-        available_cim_fields = CIM_FIELDS.get(cim_model, [])
+
+        available_cim_fields = _get_cim_fields().get(cim_model, [])
         if not available_cim_fields:
             return {"error": f"Invalid CIM model specified: {cim_model}"}
 
@@ -101,9 +124,14 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         """
 
         try:
-            logging.info(f"Sending CIM mapping request to OpenRouter for model: {cim_model}")
+            # Use the configured endpoint and model, matching ai_detection.py;
+            # shipped defaults are the same OpenRouter URL and model.
+            ai_conf = self.get_ai_settings()
+            api_endpoint = ai_conf.get("api_endpoint") or "https://openrouter.ai/api/v1/chat/completions"
+            model = ai_conf.get("model") or "google/gemini-2.0-flash-001"
+            logging.info(f"Sending CIM mapping request to {api_endpoint} (model {model}) for CIM model: {cim_model}")
             response = requests.post(
-                url="https://openrouter.ai/api/v1/chat/completions",
+                url=api_endpoint,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "X-Title": "Cim-plicity-CIM-Mapping",
@@ -111,7 +139,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
                     "Content-Type": "application/json"
                 },
                 data=json.dumps({
-                    "model": "google/gemini-2.0-flash-001",
+                    "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"}
                 }),
@@ -121,7 +149,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
 
             # The response from the LLM might be a JSON object with a key, let's assume 'suggestions'
             content = response.json()['choices'][0]['message']['content']
-            logging.info(f"Received from OpenRouter: {content}")
+            logging.info(f"Received CIM mapping response ({len(content)} chars)")
             
             # The prompt asks for a direct JSON array, but models can sometimes wrap it.
             # We will try to parse it directly, and if that fails, look for a key.
@@ -132,7 +160,8 @@ class CimMappingHandler(PersistentServerConnectionApplication):
                     return list(suggestions.values())[0]
                 return suggestions
             except (json.JSONDecodeError, TypeError):
-                 logging.error(f"Failed to decode the direct response. Content: {content}")
+                 logging.error("Failed to decode the direct response from the AI service")
+                 logging.debug(f"Undecodable content: {content}")
                  return {"error": "Failed to parse LLM response"}
 
         except requests.exceptions.Timeout:
@@ -153,7 +182,9 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             
             if not self.system_session_key:
                 return {'payload': {'error': 'No session key provided'}, 'status': 401}
-            
+
+            self.apply_log_level()
+
             posted_data = json.loads(inbound_payload.get('payload', '{}'))
             extracted_fields = posted_data.get('extractedFields')
             cim_model = posted_data.get('cimModel')
@@ -174,7 +205,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             return {'payload': {'error': 'Invalid JSON in request payload'}, 'status': 400}
         except Exception as e:
             logging.error(f"Error during CIM mapping: {e}", exc_info=True)
-            return {'payload': {'error': str(e)}, 'status': 500}
+            return {'payload': {'error': 'Internal error during CIM mapping'}, 'status': 500}
 
     def handleStream(self, handle, in_string):
         raise NotImplementedError("handleStream not implemented")

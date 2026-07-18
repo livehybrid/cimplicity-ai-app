@@ -1,4 +1,4 @@
-splunktaucclib
+splunktaucclib==8.2.0
 splunk-sdk==2.1.1
-solnlib
-scrubadub
+solnlib==8.1.0
+scrubadub==2.0.1

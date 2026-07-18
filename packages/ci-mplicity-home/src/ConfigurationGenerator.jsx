@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import Card from '@splunk/react-ui/Card';
 import Button from '@splunk/react-ui/Button';
-import Typography from '@splunk/react-ui/Typography';
+import ControlGroup from '@splunk/react-ui/ControlGroup';
+import Heading from '@splunk/react-ui/Heading';
+import P from '@splunk/react-ui/Paragraph';
 import TextArea from '@splunk/react-ui/TextArea';
 import TabLayout from '@splunk/react-ui/TabLayout';
 import styled from 'styled-components';
+import { variables } from '@splunk/themes';
 import Toaster, { makeCreateToast } from '@splunk/react-toast-notifications/Toaster';
-import ToastMessages from '@splunk/react-toast-notifications/ToastMessages';
 import { TOAST_TYPES } from '@splunk/react-toast-notifications/ToastConstants';
-import Table from '@splunk/react-ui/Table';
-import Chip from '@splunk/react-ui/Chip';
 import Text from '@splunk/react-ui/Text';
 
 const createToast = makeCreateToast(Toaster);
@@ -32,9 +32,9 @@ const StyledPanel = styled.div`
 `;
 
 const StyledPreview = styled.div`
-    background: ${({ theme }) => theme.backgroundColorPage};
-    border: 1px solid ${({ theme }) => theme.borderColor};
-    color: ${({ theme }) => theme.textColor};
+    background: ${variables.backgroundColorPage};
+    border: 1px solid ${variables.borderColor};
+    color: ${variables.textColor};
     border-radius: 4px;
     padding: 12px;
     margin-top: 8px;
@@ -52,15 +52,10 @@ const convertToPCRE2NamedGroups = (regex) => {
 const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResults = {}, sampleData = '', extractionRegex = null, actualSourcetype = null, timeSettings = {}, onBack, onFinish }) => {
     const [propsConf, setPropsConf] = useState('');
     const [spl2IngestConf, setSpl2IngestConf] = useState('');
-    const [spl2EdgeConf, setSpl2EdgeConf] = useState('');
     const [sourcetypeOverride, setSourcetypeOverride] = useState(actualSourcetype || '');
 
-    // Add state for validation
-    const [validationResults, setValidationResults] = useState(null);
-
-    // Extract redactions and suggestion from new structure
+    // Extract redactions from new structure
     const redactions = piiResults && Array.isArray(piiResults.results) ? piiResults.results : [];
-    const suggestion = piiResults && piiResults.suggestion ? piiResults.suggestion : '';
 
     // Auto-generate configurations on component mount
     useEffect(() => {
@@ -211,7 +206,6 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
             const hasTimestamp = timestampMatch !== null;
             
             // Order fields by their appearance in the first line of data
-            const orderedFields = [];
             const fieldPositions = [];
             
             // Find the position of each field in the actual data
@@ -229,19 +223,7 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
             
             // Sort by position in the log line
             fieldPositions.sort((a, b) => a.position - b.position);
-            
-            // Generate regex parts in the correct order
-            const kvFields = fieldPositions.map(fieldPos => {
-                const field = fieldPos.field;
-                if (field.type === 'ip') {
-                    return `${field.name}=(?<${field.name}>\\d{1,3}(?:\\.\\d{1,3}){3})`;
-                } else if (field.type === 'email') {
-                    return `${field.name}=(?<${field.name}>[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})`;
-                } else {
-                    return `${field.name}=(?<${field.name}>[^\\s]+)`;
-                }
-            }).join('.*');
-            
+
             // For key-value logs, create a single comprehensive regex that uniquely identifies each field
             // This prevents individual EXTRACTs from matching wrong parts of the event
             let extraction;
@@ -401,7 +383,7 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
         // Add PII redaction rules
         if (redactions.length > 0) {
             config += '# PII Redaction Rules\n';
-            redactions.forEach((result, idx) => {
+            redactions.forEach((result) => {
                 // Use regex_pattern from the PII result if available
                 const pattern = result.regex_pattern || (result.sedcmd_regex && result.sedcmd_regex.pattern);
                 const type = (result.type || 'custom').toLowerCase();
@@ -483,7 +465,7 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
         // Add custom PII redaction
         const customPatterns = piiResults.customPatterns || [];
         if (customPatterns.length > 0) {
-            customPatterns.forEach((pattern, index) => {
+            customPatterns.forEach((pattern) => {
                 if (pattern.regex && pattern.regex.trim()) {
                     const escapedRegex = pattern.regex.replace(/"/g, '\\"');
                     const replacement = `[REDACTED_CUSTOM]`;
@@ -491,91 +473,6 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                 }
             });
         }
-
-        return config;
-    };
-
-    const generateSpl2EdgeConf = () => {
-        let config = 'version: "1.0"\n';
-        config += 'pipelines:\n';
-        config += '  - name: "my_pipeline"\n';
-        config += '    source:\n';
-        config += '      type: "file"\n';
-        config += '      path: "/path/to/data"\n';
-        config += '    processors:\n';
-        
-        // Use combined regex if available
-        if (extractionRegex && extractionRegex.trim()) {
-            const pcre2Regex = convertToPCRE2NamedGroups(extractionRegex);
-            config += `      - type: "regex"\n`;
-            config += `        field: "_raw"\n`;
-            config += `        pattern: "${pcre2Regex}"\n`;
-        } else if (piiResults && piiResults.combined_regex) {
-            const pcre2Regex = convertToPCRE2NamedGroups(piiResults.combined_regex);
-            config += `      - type: "regex"\n`;
-            config += `        field: "_raw"\n`;
-            config += `        pattern: "${pcre2Regex}"\n`;
-        } else {
-            // Fallback: per-field extraction
-            nonSplunkFields.forEach(field => {
-                const pattern = getFieldExtractionPattern(field, sampleData);
-                const pcre2Pattern = convertToPCRE2NamedGroups(pattern);
-                config += `      - type: "regex"\n`;
-                config += `        field: "_raw"\n`;
-                config += `        pattern: "${pcre2Pattern}"\n`;
-            });
-        }
-
-        // Add PII masking processors
-        if (redactions.length > 0) {
-            redactions.forEach(result => {
-                const pattern = result.regex_pattern || (result.sedcmd_regex && result.sedcmd_regex.pattern);
-                const replacement = `[REDACTED_${result.type.toUpperCase()}]`;
-                if (pattern) {
-                    config += `      - type: "mask"\n`;
-                    config += `        field: "${result.field}"\n`;
-                    config += `        pattern: "${pattern}"\n`;
-                    config += `        replacement: "${replacement}"\n`;
-                } else {
-                    // Fallback to previous logic if no regex_pattern
-                    const fallback = getFieldContextRegex(result.field, result.type, sampleData);
-                    config += `      - type: "mask"\n`;
-                    config += `        field: "${result.field}"\n`;
-                    config += `        pattern: "${fallback.pattern}"\n`;
-                    config += `        replacement: "${replacement}"\n`;
-                }
-            });
-        }
-
-        // Add custom PII masking processors
-        const customPatterns = piiResults.customPatterns || [];
-        if (customPatterns.length > 0) {
-            customPatterns.forEach(pattern => {
-                if (pattern.regex && pattern.regex.trim()) {
-                    const escapedRegex = pattern.regex.replace(/"/g, '\\"');
-                    const replacement = `[REDACTED_CUSTOM]`;
-                    config += `      - type: "mask"\n`;
-                    config += `        field: "_raw"\n`;
-                    config += `        pattern: "${escapedRegex}"\n`;
-                    config += `        replacement: "${replacement}"\n`;
-                }
-            });
-        }
-
-        // Add CIM mapping processor
-        const cimMappingEntries = Object.entries(cimMapping).filter(([_, cimField]) => cimField);
-        if (cimMappingEntries.length > 0) {
-            config += `      - type: "rename"\n`;
-            config += `        mappings:\n`;
-            cimMappingEntries.forEach(([extractedField, cimField]) => {
-                config += `          "${extractedField}": "${cimField}"\n`;
-            });
-        }
-
-        config += '    destination:\n';
-        config += '      type: "splunk"\n';
-        config += '      index: "main"\n';
-        config += '      sourcetype: "my_custom_sourcetype"\n';
 
         return config;
     };
@@ -600,24 +497,6 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                 } else {
                     return '(?<' + field.name + '>[^\\s]+)';
                 }
-        }
-    };
-
-    const getRedactionPattern = (type) => {
-        switch (type) {
-            case 'email':
-                return '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}';
-            case 'ip':
-            case 'ip_address':
-                return '\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b';
-            case 'phone':
-                return '\\b\\d{3}-\\d{3}-\\d{4}\\b';
-            case 'ssn':
-                return '\\b\\d{3}-\\d{2}-\\d{4}\\b';
-            case 'credit_card':
-                return '\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b';
-            default:
-                return '[^\\s]+';
         }
     };
 
@@ -721,23 +600,44 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
     };
 
     const generateConfigurations = () => {
-        const propsConfig = generatePropsConf();
-        const spl2IngestConfig = generateSpl2IngestConf();
-        const spl2EdgeConfig = generateSpl2EdgeConf();
-        
-        setPropsConf(propsConfig);
-        setSpl2IngestConf(spl2IngestConfig);
-        setSpl2EdgeConf(spl2EdgeConfig);
+        setPropsConf(generatePropsConf());
+        setSpl2IngestConf(generateSpl2IngestConf());
     };
 
-    const handleCopy = (content, name) => {
-        navigator.clipboard.writeText(content);
-        createToast({
-            type: TOAST_TYPES.SUCCESS,
-            title: 'Copied!',
-            message: `${name} copied to clipboard`,
-            autoDismiss: true,
-        });
+    // navigator.clipboard is missing on non-secure origins (plain-http Splunk Web),
+    // so feature-detect, fall back to execCommand and only toast success when the copy worked
+    const handleCopy = async (content, name) => {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(content);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = content;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                const copied = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                if (!copied) {
+                    throw new Error('execCommand copy failed');
+                }
+            }
+            createToast({
+                type: TOAST_TYPES.SUCCESS,
+                title: 'Copied!',
+                message: `${name} copied to clipboard`,
+                autoDismiss: true,
+            });
+        } catch (e) {
+            console.error('Clipboard copy failed', e);
+            createToast({
+                type: TOAST_TYPES.ERROR,
+                title: 'Copy failed',
+                message: `Could not copy ${name} to the clipboard`,
+                autoDismiss: true,
+            });
+        }
     };
 
     const handleDownload = (content, filename) => {
@@ -758,34 +658,26 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
         });
     };
 
-    // Validation function
-    function validateConfigs() {
-        // Simulate applying props.conf
-        const simulated = applyExtractions(sampleData, propsConf);
-        setValidationResults(simulated);
-    }
-
     return (
         <>
-            <ToastMessages position="top-center" />
             <Card style={{ width: '100%', marginTop: 24 }}>
                 <Card.Header title="Configuration Generator" />
                 <Card.Body>
                     <StyledBox marginBottom={20}>
-                        <Typography as="h3" variant="title3" style={{ marginBottom: 4 }}>
+                        <Heading level={3} style={{ marginBottom: 4 }}>
                             Generate Splunk Configuration Files
-                        </Typography>
-                        <Typography as="p" variant="body" style={{ opacity: 0.8 }}>
-                            Generate proper Splunk configuration files (props.conf, transforms.conf) and SPL2 examples 
+                        </Heading>
+                        <P style={{ opacity: 0.8 }}>
+                            Generate proper Splunk configuration files (props.conf, transforms.conf) and SPL2 examples
                             based on your field extractions, CIM mappings, and PII detection results.
-                        </Typography>
+                        </P>
                     </StyledBox>
 
                     {sampleData && (
                         <StyledBox marginBottom={24}>
-                            <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                            <Heading level={4} style={{ marginBottom: 8 }}>
                                 Sample Data
-                            </Typography>
+                            </Heading>
                             <StyledPreview>
                                 {sampleData}
                             </StyledPreview>
@@ -795,25 +687,29 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                     <Card style={{ marginBottom: 16 }}>
                         <Card.Header title="Sourcetype Override" />
                         <Card.Body>
-                            <Typography>Override the sourcetype stanza name for the generated configuration:</Typography>
-                            <Text
-                                value={sourcetypeOverride}
-                                onChange={e => setSourcetypeOverride(e.target.value)}
-                                placeholder="Enter sourcetype name"
-                                style={{ marginTop: 8, width: '100%' }}
-                            />
+                            <ControlGroup
+                                label="Sourcetype"
+                                labelPosition="top"
+                                help="Override the sourcetype stanza name for the generated configuration."
+                            >
+                                <Text
+                                    value={sourcetypeOverride}
+                                    onChange={(e, { value }) => setSourcetypeOverride(value)}
+                                    placeholder="Enter sourcetype name"
+                                />
+                            </ControlGroup>
                         </Card.Body>
                     </Card>
 
                     <TabLayout defaultActivePanelId="props">
                         <TabLayout.Panel label="props.conf" panelId="props">
                             <StyledBox marginBottom={16}>
-                                <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                                <Heading level={4} style={{ marginBottom: 8 }}>
                                     props.conf
-                                </Typography>
-                                <Typography as="p" variant="body" style={{ marginBottom: 16, opacity: 0.8 }}>
+                                </Heading>
+                                <P style={{ marginBottom: 16, opacity: 0.8 }}>
                                     Configuration for defining field extractions, CIM field aliases, and PII redaction.
-                                </Typography>
+                                </P>
                                 <TextArea
                                     value={propsConf}
                                     rowsMin={10}
@@ -837,14 +733,14 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                             </StyledBox>
                         </TabLayout.Panel>
 
-                        <TabLayout.Panel label="SPL2 (Ingest & Edge)" panelId="spl2-ingest">
+                        <TabLayout.Panel label="SPL2 Ingest" panelId="spl2-ingest">
                             <StyledBox marginBottom={16}>
-                                <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                                <Heading level={4} style={{ marginBottom: 8 }}>
                                     SPL2 Ingest Processor Configuration
-                                </Typography>
-                                <Typography as="p" variant="body" style={{ marginBottom: 16, opacity: 0.8 }}>
+                                </Heading>
+                                <P style={{ marginBottom: 16, opacity: 0.8 }}>
                                     SPL2 configuration for Splunk Ingest Processor with field extraction and PII handling.
-                                </Typography>
+                                </P>
                                 <TextArea
                                     value={spl2IngestConf}
                                     rowsMin={10}
@@ -878,7 +774,7 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                         <StyledPanel>
                             <Button
                                 appearance="primary"
-                                onClick={() => onFinish({ propsConf, spl2IngestConf, spl2EdgeConf })}
+                                onClick={() => onFinish({ propsConf, spl2IngestConf })}
                             >
                                 Finish
                             </Button>

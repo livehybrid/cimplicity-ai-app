@@ -1,25 +1,53 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect } from '@jest/globals';
+import '@testing-library/jest-dom';
+import { SplunkThemeProvider } from '@splunk/themes';
 import CIMMapping from '../CIMMapping';
 
+const extractedFields = [
+    { name: 'clientip', type: 'ip', sampleValue: '1.2.3.4' },
+    { name: 'user', type: 'string', sampleValue: 'alice' },
+];
+
+const renderMapping = (props = {}) =>
+    render(
+        <SplunkThemeProvider family="prisma" colorScheme="light" density="comfortable">
+            <CIMMapping
+                extractedFields={extractedFields}
+                onBack={() => {}}
+                onContinue={() => {}}
+                {...props}
+            />
+        </SplunkThemeProvider>
+    );
+
 describe('CIMMapping', () => {
-    const extractedFields = [
-        { name: 'src_ip', sampleValue: '1.2.3.4' },
-        { name: 'user', sampleValue: 'alice' },
-    ];
-    it('renders extracted fields and disables Continue until mapped', () => {
-        render(<CIMMapping extractedFields={extractedFields} onBack={() => {}} onContinue={() => {}} />);
+    it('disables Continue until a CIM model is selected', () => {
+        renderMapping();
+        expect(screen.getByText('How to use CIM Field Mapping')).toBeInTheDocument();
+        const continueBtn = screen.getByRole('button', { name: /continue to pii detection/i });
+        // Splunk Button conveys disabled state via aria-disabled
+        expect(continueBtn).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('shows CIM fields of the initial model and enables Continue', () => {
+        renderMapping({ initialModel: 'web' });
+        // Web model CIM fields render as mapping rows
         expect(screen.getByText('src_ip')).toBeInTheDocument();
-        expect(screen.getByText('user')).toBeInTheDocument();
-        const continueBtn = screen.getByRole('button', { name: /continue/i });
-        expect(continueBtn).toBeDisabled();
+        expect(screen.getByText('http_method')).toBeInTheDocument();
+        const continueBtn = screen.getByRole('button', { name: /continue to pii detection/i });
+        expect(continueBtn).not.toHaveAttribute('aria-disabled', 'true');
     });
-    it('enables Continue when a CIM field is mapped', () => {
-        render(<CIMMapping extractedFields={extractedFields} onBack={() => {}} onContinue={() => {}} />);
-        const selects = screen.getAllByRole('combobox');
-        fireEvent.change(selects[0], { target: { value: 'src_ip' } });
-        const continueBtn = screen.getByRole('button', { name: /continue/i });
-        expect(continueBtn).not.toBeDisabled();
+
+    it('toggling the mapping mode switches the source column to extracted fields', () => {
+        renderMapping({ initialModel: 'web' });
+        expect(screen.getByText('CIM Field')).toBeInTheDocument();
+        fireEvent.click(
+            screen.getByLabelText('Map each CIM field to an extracted field (recommended)')
+        );
+        // After the toggle the table is seeded from the extracted fields, not the CIM model
+        expect(screen.getByText('Extracted Field')).toBeInTheDocument();
+        expect(screen.getByText('clientip')).toBeInTheDocument();
     });
-}); 
+});

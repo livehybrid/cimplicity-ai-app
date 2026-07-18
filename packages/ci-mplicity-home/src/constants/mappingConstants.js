@@ -1,10 +1,11 @@
-// Quality Score Constants for CIM Field Mapping
+// Quality Score Constants for CIM Field Mapping.
+// colorToken names a @splunk/themes severity variable so badges stay readable in both themes.
 export const QUALITY_SCORE_THRESHOLDS = {
-    EXCELLENT: { min: 90, color: '#28a745', label: 'Excellent', description: 'Comprehensive CIM compliance' },
-    GOOD: { min: 80, color: '#6f9f3e', label: 'Good', description: 'Strong CIM coverage' },
-    FAIR: { min: 60, color: '#ffc107', label: 'Fair', description: 'Moderate CIM coverage' },
-    POOR: { min: 40, color: '#fd7e14', label: 'Poor', description: 'Limited CIM coverage' },
-    CRITICAL: { min: 0, color: '#dc3545', label: 'Critical', description: 'Minimal CIM coverage' }
+    EXCELLENT: { min: 90, colorToken: 'severityColorNormal', label: 'Excellent', description: 'Comprehensive CIM compliance' },
+    GOOD: { min: 80, colorToken: 'severityColorNormal', label: 'Good', description: 'Strong CIM coverage' },
+    FAIR: { min: 60, colorToken: 'severityColorWarning', label: 'Fair', description: 'Moderate CIM coverage' },
+    POOR: { min: 40, colorToken: 'severityColorAlert', label: 'Poor', description: 'Limited CIM coverage' },
+    CRITICAL: { min: 0, colorToken: 'severityColorCritical', label: 'Critical', description: 'Minimal CIM coverage' }
 };
 
 // Get quality score configuration based on percentage

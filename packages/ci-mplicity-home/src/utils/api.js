@@ -1,12 +1,10 @@
-import { app, username, getCSRFToken } from '@splunk/splunk-utils/config';
+import { app } from '@splunk/splunk-utils/config';
 import { getDefaultFetchInit } from '@splunk/splunk-utils/fetch';
 import { createRESTURL } from '@splunk/splunk-utils/url';
 import { ResponseError } from './ResponseError';
 import { handleResponse, handleError } from '@splunk/splunk-utils/fetch';
 
 const DEFAULT_PARAMS = { output_mode: 'json' };
-
-const APP_NAME = 'cim-plicity';
 
 function createUrl(endpointUrl, params) {
     const url = new URL(createRESTURL(endpointUrl, { app }), window.location.origin);
@@ -45,35 +43,6 @@ export async function getRequest({ endpointUrl, params = {}, signal }) {
     return fetchWithErrorHandling(url, options);
 }
 
-export async function postRequest({ endpointUrl, params = {}, body, signal }) {
-    const url = createUrl(endpointUrl, params);
-    const defaultInit = getDefaultFetchInit();
-    const headers = {
-        ...defaultInit.headers,
-        'Content-Type': 'application/x-www-form-urlencoded',
-    };
-
-    const options = {
-        method: 'POST',
-        headers,
-        signal,
-        body,
-    };
-
-    return fetchWithErrorHandling(url, options);
-}
-
-export async function deleteRequest({ endpointUrl, params = {}, signal }) {
-    const url = createUrl(endpointUrl, params);
-
-    const options = {
-        method: 'DELETE',
-        signal,
-    };
-
-    return fetchWithErrorHandling(url, options);
-}
-
 /**
  * A generic helper to make POST requests to our custom endpoints.
  * @param {string} endpoint - The name of the endpoint to call (e.g., 'pii_detection').
@@ -81,11 +50,9 @@ export async function deleteRequest({ endpointUrl, params = {}, signal }) {
  * @returns {Promise<object>} - A promise that resolves to the JSON response from the endpoint.
  */
 async function postToEndpoint(endpoint, postData) {
-    // The REST endpoint lives in the 'cim-plicity' app, not the current UI app context.
-    const url = createRESTURL(`/servicesNS/-/${APP_NAME}/${endpoint}`, {
-        owner: username,
-        app: APP_NAME,
-    });
+    // With app but no owner, createRESTURL emits /servicesNS/-/<app>/<endpoint>,
+    // matching the restmap.conf and web.conf stanzas for this app.
+    const url = createRESTURL(endpoint, { app });
 
     const defaultInit = getDefaultFetchInit();
 
@@ -135,10 +102,3 @@ export const detectFieldsWithAi = (text, description = null, selectedFields = nu
     }
     return postToEndpoint('ai_detection', payload);
 };
-
-// Improve API call with retries
-async function callApiWithRetry(endpoint, data, retries=3) {
-    // Implementation
-}
-
-// Update detectFieldsWithAi to use retry 

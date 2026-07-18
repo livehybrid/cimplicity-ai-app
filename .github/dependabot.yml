@@ -2,9 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     target-branch: "develop"
-    directories: 
-      - "/"
-      - "/ucc-app/lib/"
+    directory: "/ucc-app/lib"
     schedule:
       interval: "daily"
     groups:
@@ -12,6 +10,11 @@ updates:
         applies-to: version-updates
         patterns:
         - "splunk*"
+  - package-ecosystem: "npm"
+    target-branch: "develop"
+    directory: "/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "github-actions"
     target-branch: "develop"
     directory: "/"

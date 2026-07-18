@@ -146,13 +146,6 @@
             ],
             "title": "Configuration",
             "description": "Set up your add-on"
-        },
-        "dashboard": {
-            "panels": [
-                {
-                    "name": "default"
-                }
-            ]
         }
     },
     "meta": {

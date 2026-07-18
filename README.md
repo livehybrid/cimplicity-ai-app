@@ -9,11 +9,12 @@ Check out the app at SplunkBase [https://splunkbase.splunk.com/app/7945](https:/
 
 ### Key Features
 
-- 🤖 **AI-Powered Field Extraction**: Automatically detect and extract fields from log data
-- 🗺️ **CIM Mapping**: Map extracted fields to Splunk Common Information Model (CIM)
-- 🔒 **PII Detection**: Identify and redact Personally Identifiable Information
+- 🤖 **AI-Powered Field Extraction**: Automatically detect and extract fields from log data ([endpoint docs](docs/AI_DETECTION_ENDPOINT.md))
+- 🗺️ **CIM Mapping**: Map extracted fields to Splunk Common Information Model (CIM) data models, loaded dynamically from Splunk_SA_CIM when installed ([endpoint docs](docs/CIM_MAPPING_ENDPOINT.md))
+- 🔒 **PII Detection**: Identify and redact Personally Identifiable Information ([endpoint docs](docs/PII_DETECTION_ENDPOINT.md))
 - ⚙️ **Configuration Generation**: Generate Splunk props.conf and transforms.conf automatically
 - 📊 **Multiple Format Support**: JSON, CSV, Syslog, XML, and custom regex patterns
+- 🔌 **MCP Tools**: The endpoints are registered as Splunk MCP Server tools for AI agents ([MCP docs](docs/MCP_TOOLS.md))
 
 ## Screenshots
 
@@ -28,7 +29,7 @@ Check out the app at SplunkBase [https://splunkbase.splunk.com/app/7945](https:/
 ### Prerequisites
 
 - Splunk Enterprise 9.0 or later
-- Python 3.7+ (for backend services)
+- Python 3.9 (for backend services)
 - Node.js 14+ (for development)
 
 ### Step 1: Install the App
@@ -146,12 +147,12 @@ CUSTOM_PII_PATTERNS = {
 ### Project Structure
 
 ```
-splunk-app/
+cimplicity-ai-app/
 ├── packages/
 │   ├── ci-mplicity-home/     # Main React UI
 │   └── cim-plicity/          # Splunk app backend
 ├── docs/                     # Documentation
-├── ucc-app/                  # Universal Config Converter
+├── ucc-app/                  # UCC (Universal Configuration Console) source
 └── README.md                 # This file
 ```
 
@@ -159,14 +160,14 @@ splunk-app/
 
 ```bash
 # Run all tests
-npm run test
+yarn run test
 
 # Run specific package tests
 cd packages/ci-mplicity-home
-npm run test
+yarn run test
 
 # Run linting
-npm run lint
+yarn run lint
 ```
 
 ## Troubleshooting
@@ -197,10 +198,9 @@ npm run lint
 
 ### Support
 
-- **Documentation**: Check the `/docs` directory
+- **Documentation**: Check the `/docs` directory (start with [docs/README.md](docs/README.md))
 - **Issues**: Report bugs on GitHub
 - **Discussions**: Use GitHub Discussions for questions
-- **Demo**: See `docs/DEMO_NARRATIVE.md` for video script
 
 ## Contributing
 
@@ -231,4 +231,4 @@ This project is licensed under the Apache License 2.0 - see the LICENSE file for
 
 ---
 
-**Note**: This app is designed for the Splunk Build-a-Thon and demonstrates AI-powered data onboarding capabilities. For production use, additional security and performance considerations may be required.
+**Note**: CIMplicity AI started life as a Splunk Build-a-Thon entry and is now published on [Splunkbase (app 7945)](https://splunkbase.splunk.com/app/7945); it is also the subject of the .conf26 talk PLA1040 (Easier Data Onboarding). For production use, additional security and performance considerations may be required.

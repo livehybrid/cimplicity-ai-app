@@ -4,7 +4,7 @@ import layout from '@splunk/react-page';
 import CiMplicityHome from '@splunk/ci-mplicity-home';
 import { getUserTheme } from '@splunk/splunk-utils/themes';
 
-import { StyledContainer, StyledGreeting } from './StartStyles';
+import { StyledContainer } from './StartStyles';
 
 getUserTheme()
     .then((theme) => {
@@ -19,6 +19,6 @@ getUserTheme()
     })
     .catch((e) => {
         const errorEl = document.createElement('span');
-        errorEl.innerHTML = e;
+        errorEl.textContent = String(e);
         document.body.appendChild(errorEl);
     });
