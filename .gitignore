@@ -19,3 +19,5 @@ ucc-app/bin/.pytest_cache/
 ucc-app/lib/__pycache__/
 .pytest_cache/
 package-lock.json
+temp-package/
+dist-deploy/

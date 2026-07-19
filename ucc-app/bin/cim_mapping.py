@@ -31,6 +31,13 @@ new_paths.append(os.path.join(dirname(dirname(__file__)), "lib"))
 new_paths.insert(0, os.path.sep.join([os.path.dirname(__file__), ta_name]))
 sys.path = new_paths
 
+# load_cim_models is a sibling module in bin/. persistconn does NOT put the
+# script's own directory on sys.path, so add it explicitly or the import below
+# fails with ModuleNotFoundError.
+_bindir = os.path.dirname(os.path.abspath(__file__))
+if _bindir not in sys.path:
+    sys.path.insert(0, _bindir)
+
 from solnlib import conf_manager
 
 ADDON_NAME = 'cim-plicity'

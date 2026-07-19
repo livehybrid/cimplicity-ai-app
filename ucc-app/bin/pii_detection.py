@@ -22,12 +22,20 @@ import hashlib
 # Ensure the app's lib directory is at the front of sys.path
 lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'lib'))
 bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+# Native/binary deps (regex, numpy) are installed by ucc-gen into
+# lib/3rdparty/<platform> from globalConfig os-dependentLibraries, NOT lib/.
+# UCC's generated import_declare_test.py is meant to add this but has a
+# "39" == "3.9" version-string bug, so add it explicitly here.
+thirdparty_path = os.path.join(lib_path, '3rdparty', 'linux_lib_py39')
 
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
 if bin_path not in sys.path:
     sys.path.insert(0, bin_path)
+
+if os.path.isdir(thirdparty_path) and thirdparty_path not in sys.path:
+    sys.path.insert(0, thirdparty_path)
 
 from solnlib import conf_manager
 
