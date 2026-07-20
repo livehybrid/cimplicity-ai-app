@@ -4,7 +4,7 @@ solnlib
 numpy==2.0.2
 srsly
 pydantic
-typing-extensions>=4.10.0
+typing-extensions>=4.16.0
 thinc>=8.1.0,<10.0.0
 spacy>=3.4.0,<4.0.0
 presidio-analyzer>=2.2.38,<3.0.0
