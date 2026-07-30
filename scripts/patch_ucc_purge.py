@@ -12,8 +12,8 @@ purging and was immune, which is why this repo was pinned to 5.69.1 until now.
 Run straight after `pip install -r build-requirements.txt` (CI and local
 builds). Idempotent. Fails loudly if the upstream code changes shape so the
 workaround gets re-evaluated rather than silently rotting. Delete this script
-once upstream guards the removal
-(https://github.com/splunk/addonfactory-ucc-generator).
+once upstream fixes
+https://github.com/splunk/addonfactory-ucc-generator/issues/2081.
 """
 import pathlib
 import sys

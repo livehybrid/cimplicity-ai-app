@@ -41,6 +41,7 @@ jobs:
         # reason this repo sat pinned on 5.69.1 until 2026-07-30) —
         # scripts/patch_ucc_purge.py guards it post-install. The script exits
         # loudly if upstream changes, so a future bump re-evaluates the patch.
+        # Upstream: https://github.com/splunk/addonfactory-ucc-generator/issues/2081
         run: |
           pip install -r build-requirements.txt
           python scripts/patch_ucc_purge.py
