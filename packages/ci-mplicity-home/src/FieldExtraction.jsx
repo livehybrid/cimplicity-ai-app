@@ -23,6 +23,8 @@ import Toaster, { makeCreateToast } from '@splunk/react-toast-notifications/Toas
 import { TOAST_TYPES } from '@splunk/react-toast-notifications/ToastConstants';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import P from '@splunk/react-ui/Paragraph';
+import StarSparklesDouble from '@splunk/react-icons/StarSparklesDouble';
+import AiBadge from './AiBadge';
 
 const createToast = makeCreateToast(Toaster);
 
@@ -883,7 +885,10 @@ const FieldExtraction = ({
                             </StyledPreview>
                         </div>
                     </TabLayout.Panel>
-                    <TabLayout.Panel label="Ask AI" panelId="ai">
+                    <TabLayout.Panel
+                        label={<span>Ask AI <AiBadge compact tooltip={false} /></span>}
+                        panelId="ai"
+                    >
                         <Message appearance="fill" type="info" style={{ marginBottom: 16 }}>
                             <strong>Privacy Notice:</strong> Your sample data and any description you provide will be sent to the configured LLM service for analysis. Please ensure you are comfortable sharing this data with the external service.
                         </Message>
@@ -906,7 +911,7 @@ const FieldExtraction = ({
                             appearance="primary"
                             onClick={() => onDetectFields(aiDescription.trim() || null)}
                             disabled={aiFieldLoading || !hasData}
-                            icon={aiFieldLoading ? <WaitSpinner size="small" /> : null}
+                            icon={aiFieldLoading ? <WaitSpinner size="small" /> : <StarSparklesDouble />}
                         />
                         {!hasData && <P>Please provide sample data in the first step.</P>}
 

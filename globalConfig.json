@@ -39,18 +39,25 @@
                             ]
                         },
                         {
-                            "type": "text",
+                            "type": "singleSelect",
                             "label": "Model",
                             "field": "model",
-                            "help": "Model name",
+                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list.",
                             "required": true,
-                            "encrypted": false,
+                            "options": {
+                                "endpointUrl": "cim-plicity/ai_model_choices",
+                                "labelField": "label",
+                                "createSearchChoice": true,
+                                "dependencies": [
+                                    "api_endpoint"
+                                ]
+                            },
                             "validators": [
                                 {
                                     "type": "string",
-                                    "errorMsg": "Length of API key should be between 1 and 50",
+                                    "errorMsg": "Length of model ID should be between 1 and 100",
                                     "minLength": 1,
-                                    "maxLength": 50
+                                    "maxLength": 100
                                 }
                             ]
                         },

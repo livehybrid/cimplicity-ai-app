@@ -20,6 +20,7 @@ import FileCsv from '@splunk/react-icons/FileCsv';
 import Servers from '@splunk/react-icons/Servers';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import FieldExtraction from './FieldExtraction';
+import StepGuidance from './StepGuidance';
 import CIMMapping from './CIMMapping';
 import PIIDetection from './PIIDetection';
 import ConfigurationGenerator from './ConfigurationGenerator';
@@ -253,7 +254,13 @@ const DataInputStep = ({ onDataSubmit }) => {
             setIndexesLoading(true);
             setIndexesError(null);
             try {
-                const data = await getRequest({ endpointUrl: 'data/indexes', signal: controller.signal });
+                // count=0 lifts Splunk's default 30-entry page size so every
+                // index the user can see is listed, not just the first page
+                const data = await getRequest({
+                    endpointUrl: 'data/indexes',
+                    params: { count: 0 },
+                    signal: controller.signal,
+                });
                 const indexOptions = (data.entry || []).map((index) => ({
                     label: index.name,
                     value: index.name,
@@ -775,12 +782,11 @@ const CiMplicityHome = ({ name = 'User' }) => {
             </main>
             <aside>
                 <Card>
-                    <Card.Header title="Help & Context" />
+                    <Card.Header
+                        title={`Help: ${STEPS[Object.keys(STEPS).find(key => STEPS[key].number === activeStepId)].label}`}
+                    />
                     <Card.Body>
-                        <Paragraph>{STEPS[Object.keys(STEPS).find(key => STEPS[key].number === activeStepId)].help}</Paragraph>
-                        <Paragraph style={{ marginTop: 8 }}>
-                            <strong>Currently on:</strong> {STEPS[Object.keys(STEPS).find(key => STEPS[key].number === activeStepId)].label}
-                        </Paragraph>
+                        <StepGuidance stepId={activeStepId} />
                     </Card.Body>
                 </Card>
             </aside>

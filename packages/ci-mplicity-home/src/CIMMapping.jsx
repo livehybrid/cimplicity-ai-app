@@ -19,7 +19,7 @@ import {
     getQualityScoreConfig 
 } from './constants/mappingConstants';
 
-const CIM_MODELS = [
+export const CIM_MODELS = [
     {
         id: 'authentication',
         label: 'Authentication',
