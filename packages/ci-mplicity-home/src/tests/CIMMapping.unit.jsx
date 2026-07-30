@@ -23,9 +23,18 @@ const renderMapping = (props = {}) =>
     );
 
 describe('CIMMapping', () => {
-    it('disables Continue until a CIM model is selected', () => {
+    it('auto-selects the best-matching CIM model on entry', () => {
+        // clientip -> src_ip and user -> user both match Authentication, so it
+        // is pre-selected and the auto-pick explanation is shown
         renderMapping();
         expect(screen.getByText('How to use CIM Field Mapping')).toBeInTheDocument();
+        expect(screen.getByText(/Auto-selected Authentication/)).toBeInTheDocument();
+        const continueBtn = screen.getByRole('button', { name: /continue to pii detection/i });
+        expect(continueBtn).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('disables Continue when no model auto-matches the extracted fields', () => {
+        renderMapping({ extractedFields: [{ name: 'zzz_nothing_matches_this', type: 'string' }] });
         const continueBtn = screen.getByRole('button', { name: /continue to pii detection/i });
         // Splunk Button conveys disabled state via aria-disabled
         expect(continueBtn).toHaveAttribute('aria-disabled', 'true');

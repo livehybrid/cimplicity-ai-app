@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import Card from '@splunk/react-ui/Card';
 import Button from '@splunk/react-ui/Button';
@@ -7,6 +7,11 @@ import Switch from '@splunk/react-ui/Switch';
 import Heading from '@splunk/react-ui/Heading';
 import P from '@splunk/react-ui/Paragraph';
 import List from '@splunk/react-ui/List';
+import Message from '@splunk/react-ui/Message';
+import WaitSpinner from '@splunk/react-ui/WaitSpinner';
+import StarSparklesDouble from '@splunk/react-icons/StarSparklesDouble';
+import AiBadge from './AiBadge';
+import { suggestCimMapping } from './utils/api';
 // Box and Layout components don't exist in Splunk React UI
 // Using styled-components instead
 import Table from '@splunk/react-ui/Table';
@@ -152,8 +157,41 @@ const CIMMapping = ({
     const [fieldMappings, setFieldMappings] = useState(initialMappings);
     const [autoSuggestions, setAutoSuggestions] = useState({});
     const [showAutoSuggestions, setShowAutoSuggestions] = useState(false);
+    // {cimField: {source: 'ai', confidence, reasoning}} — entries absent here
+    // are local name-match suggestions
+    const [suggestionMeta, setSuggestionMeta] = useState({});
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState(null);
+    const [autoPicked, setAutoPicked] = useState(null);
     const lastModel = useRef(selectedModel);
     const lastFields = useRef(extractedFields);
+
+    // Score every model by how many of its CIM fields auto-match the extracted
+    // fields; used to pre-select the likeliest model and annotate the picker.
+    const modelMatchCounts = useMemo(() => {
+        const counts = {};
+        CIM_MODELS.forEach((model) => {
+            counts[model.id] = Object.keys(generateAutoMappings(extractedFields, model.fields)).length;
+        });
+        return counts;
+    }, [extractedFields]);
+
+    useEffect(() => {
+        if (!selectedModel && extractedFields && extractedFields.length > 0) {
+            let best = null;
+            CIM_MODELS.forEach((model) => {
+                if (modelMatchCounts[model.id] > 0 && (!best || modelMatchCounts[model.id] > modelMatchCounts[best.id])) {
+                    best = model;
+                }
+            });
+            if (best) {
+                setSelectedModel(best.id);
+                setAutoPicked({ id: best.id, label: best.label, count: modelMatchCounts[best.id] });
+            }
+        }
+        // Run once on entry: auto-pick only before the user has chosen anything
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (selectedModel && (lastModel.current !== selectedModel || lastFields.current !== extractedFields)) {
@@ -195,7 +233,43 @@ const CIMMapping = ({
 
         const suggestions = generateAutoMappings(extractedFields, model.fields);
         setAutoSuggestions(suggestions);
+        setSuggestionMeta({});
         setShowAutoSuggestions(Object.keys(suggestions).length > 0);
+    };
+
+    const handleAskAi = () => {
+        if (!selectedModel) return;
+        setAiLoading(true);
+        setAiError(null);
+        suggestCimMapping(extractedFields, selectedModel)
+            .then((results) => {
+                const list = Array.isArray(results) ? results : [];
+                const valid = list.filter((s) => s && s.cimField && s.field);
+                if (valid.length > 0) {
+                    setAutoSuggestions((prev) => {
+                        const merged = { ...prev };
+                        valid.forEach((s) => { merged[s.cimField] = s.field; });
+                        return merged;
+                    });
+                    setSuggestionMeta((prev) => {
+                        const merged = { ...prev };
+                        valid.forEach((s) => {
+                            merged[s.cimField] = { source: 'ai', confidence: s.confidence, reasoning: s.reasoning };
+                        });
+                        return merged;
+                    });
+                    setShowAutoSuggestions(true);
+                } else if (Array.isArray(results)) {
+                    setAiError('The AI returned no mapping suggestions for this model.');
+                } else {
+                    setAiError((results && results.error) || 'AI returned an unexpected response.');
+                }
+                setAiLoading(false);
+            })
+            .catch((err) => {
+                setAiError((err && err.message) || 'Failed to reach the AI service. Check the AI Configuration page.');
+                setAiLoading(false);
+            });
     };
 
     const handleModelChange = (e, { value }) => {
@@ -307,7 +381,18 @@ const CIMMapping = ({
                                 <Table.Cell>{cimField}</Table.Cell>
                                 <Table.Cell>{extractedField}</Table.Cell>
                                 <Table.Cell>
-                                    <Chip appearance="success">High</Chip>
+                                    {suggestionMeta[cimField] && suggestionMeta[cimField].source === 'ai' ? (
+                                        <span title={suggestionMeta[cimField].reasoning || undefined}>
+                                            <Chip appearance="success">
+                                                {typeof suggestionMeta[cimField].confidence === 'number'
+                                                    ? `${Math.round(suggestionMeta[cimField].confidence * 100)}%`
+                                                    : 'AI'}
+                                            </Chip>{' '}
+                                            <AiBadge compact />
+                                        </span>
+                                    ) : (
+                                        <Chip appearance="success">High</Chip>
+                                    )}
                                 </Table.Cell>
                                 <Table.Cell>
                                     <Button
@@ -371,11 +456,26 @@ const CIMMapping = ({
                         allowCreate={false}
                     >
                         {CIM_MODELS.map(model => (
-                            <Select.Option key={model.id} value={model.id} label={model.label}>
+                            <Select.Option
+                                key={model.id}
+                                value={model.id}
+                                label={
+                                    modelMatchCounts[model.id]
+                                        ? `${model.label} (${modelMatchCounts[model.id]} auto-matches)`
+                                        : model.label
+                                }
+                            >
                                 {model.label}
                             </Select.Option>
                         ))}
                     </Select>
+                    {autoPicked && selectedModel === autoPicked.id && (
+                        <Message appearance="fill" type="info" style={{ marginTop: 8 }}>
+                            Auto-selected {autoPicked.label}: {autoPicked.count} of your fields auto-match
+                            this model, the most of any CIM model. Change it if another model fits your
+                            data better.
+                        </Message>
+                    )}
                     {selectedModel && (
                         <P style={{ marginTop: 4, opacity: 0.8 }}>
                             {CIM_MODELS.find((m) => m.id === selectedModel)?.description}
@@ -402,6 +502,28 @@ const CIMMapping = ({
                                 </StyledQualityScore>
                             );
                         })()}
+
+                        {/* AI mapping suggestions - the one LLM-backed action on this page */}
+                        <StyledBox marginBottom={16}>
+                            <Button
+                                appearance="secondary"
+                                label={aiLoading ? 'Asking AI...' : 'Ask AI for mapping suggestions'}
+                                icon={aiLoading ? <WaitSpinner size="small" /> : <StarSparklesDouble />}
+                                onClick={handleAskAi}
+                                disabled={aiLoading || !extractedFields || extractedFields.length === 0}
+                            />{' '}
+                            <AiBadge />
+                            {aiError && (
+                                <Message
+                                    appearance="fill"
+                                    type="warning"
+                                    style={{ marginTop: 8 }}
+                                    onRequestRemove={() => setAiError(null)}
+                                >
+                                    {aiError}
+                                </Message>
+                            )}
+                        </StyledBox>
 
                         {/* Auto Suggestions Table */}
                         {renderAutoSuggestionsTable()}

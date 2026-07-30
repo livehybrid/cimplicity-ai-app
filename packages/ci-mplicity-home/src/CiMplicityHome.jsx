@@ -71,10 +71,12 @@ const StyledContainer = styled.div`
 
 const StyledSidebar = styled.div`
     padding: 24px;
-    background: ${variables.backgroundColor};
-    color: ${variables.textColor};
+    /* Brand nav: fixed to the logo's #1e1633 in both themes, so text and
+       hover states are hard-coded light rather than theme variables */
+    background: #1e1633;
+    color: #f4f2fa;
     min-height: 100vh;
-    border-right: 1px solid ${variables.borderColor};
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 2px 0 8px 0 rgba(0, 0, 0, 0.05);
 `;
 
@@ -83,7 +85,7 @@ const StyledLogo = styled.div`
 `;
 
 const StyledLogoSubText = styled(Paragraph)`
-    color: ${variables.accentColor};
+    color: rgba(255, 255, 255, 0.72);
     font-size: 13px;
 `;
 
@@ -99,11 +101,11 @@ const StyledStep = styled.button`
     text-align: left;
     color: inherit;
     cursor: ${(props) => (props.disabled ? 'default' : 'pointer')};
-    background: ${(props) => (props.$active ? variables.backgroundColorHover(props) : 'transparent')};
+    background: ${(props) => (props.$active ? 'rgba(255, 255, 255, 0.14)' : 'transparent')};
     opacity: ${(props) => (props.$completed || props.$active ? 1 : 0.5)};
 
     &:hover:not(:disabled) {
-        background: ${variables.backgroundColorHover};
+        background: rgba(255, 255, 255, 0.08);
     }
 
     &:focus-visible {
@@ -145,7 +147,9 @@ const StyledPanel = styled.div``;
 
 const MainGrid = styled.div`
     display: grid;
-    grid-template-columns: 260px 1fr 320px;
+    /* Help sidebar grows with the viewport (up to 460px) but never below the
+       original 320px, so narrow screens keep today's centre-column width */
+    grid-template-columns: 260px minmax(0, 1fr) clamp(320px, 26vw, 460px);
     gap: 0;
     min-height: 100vh;
     background: ${variables.backgroundColorPage};

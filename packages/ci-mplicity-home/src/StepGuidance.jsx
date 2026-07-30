@@ -163,10 +163,11 @@ const FieldExtractionGuide = () => (
 const CimMappingGuide = () => (
     <>
         <Paragraph>
-            Choose the data model that best matches this data, then map each extracted field
-            to its CIM counterpart. Auto-suggestions come from local field-name matching;
-            accept or adjust each one. The quality score shows how much of the model you have
-            covered.
+            The likeliest data model is pre-selected by counting local field-name matches
+            (counts shown in the picker); change it if another model fits better. Suggestions
+            in the table come from that local matching, and the Ask AI button <AiBadge compact />{' '}
+            sends your fields to the configured model for richer suggestions with confidence
+            and reasoning. The quality score shows how much of the model you have covered.
         </Paragraph>
         <CimSourceInfo />
         <Heading level={4} style={{ marginTop: 16, marginBottom: 0 }}>

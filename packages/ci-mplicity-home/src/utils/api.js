@@ -92,6 +92,16 @@ export const detectPii = (text, customPatterns = []) => {
  * @param {string[]} selectedFields - The selected fields to analyze.
  * @returns {Promise<object>} - The suggested field extractions.
  */
+/**
+ * Asks the configured LLM for CIM mapping suggestions.
+ * @param {Array} extractedFields - Extracted fields, ideally with sample values.
+ * @param {string} cimModel - CIM model key (e.g. 'authentication').
+ * @returns {Promise<Array>} - [{field, cimField, confidence, reasoning}, ...]
+ */
+export const suggestCimMapping = (extractedFields, cimModel) => {
+    return postToEndpoint('cim_mapping', { extractedFields, cimModel });
+};
+
 export const detectFieldsWithAi = (text, description = null, selectedFields = null) => {
     const payload = { text };
     if (description) {

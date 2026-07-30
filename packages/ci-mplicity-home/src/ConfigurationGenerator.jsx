@@ -81,8 +81,9 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
         
         // Replace numbered capture groups with named capture groups
         result = result.replace(/\(([^)]+)\)/g, (match, groupContent) => {
-            // Skip if it's already a named capture group
-            if (groupContent.startsWith('?<')) {
+            // Skip anything that is not a plain capture group: named groups
+            // (?<f> / (?P<f>, non-capture (?:, lookarounds (?= (?! (?<= (?<!
+            if (groupContent.startsWith('?')) {
                 return match;
             }
             
@@ -421,22 +422,25 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
         return config;
     };
 
+    // rex only extracts fields from NAMED capture groups, so bare (…) groups
+    // must be named first (same conversion the props.conf path uses), and any
+    // literal double quote must be escaped or it terminates the SPL string.
+    const toSpl2RexPattern = (regex) =>
+        convertToPCRE2NamedGroups(convertNumberedToNamedCaptureGroups(regex)).replace(/"/g, '\\"');
+
     const generateSpl2IngestConf = () => {
         let config = '// SPL2 Ingest Processor Configuration\n\n';
-        
+
         // Use combined regex if available
         if (extractionRegex && extractionRegex.trim()) {
-            const pcre2Regex = convertToPCRE2NamedGroups(extractionRegex);
-            config += `| rex field=_raw "${pcre2Regex}"\n`;
+            config += `| rex field=_raw "${toSpl2RexPattern(extractionRegex)}"\n`;
         } else if (piiResults && piiResults.combined_regex) {
-            const pcre2Regex = convertToPCRE2NamedGroups(piiResults.combined_regex);
-            config += `| rex field=_raw "${pcre2Regex}"\n`;
+            config += `| rex field=_raw "${toSpl2RexPattern(piiResults.combined_regex)}"\n`;
         } else {
             // Fallback: per-field extraction
             nonSplunkFields.forEach(field => {
                 const pattern = getFieldExtractionPattern(field, sampleData);
-                const pcre2Pattern = convertToPCRE2NamedGroups(pattern);
-                config += `| rex field=_raw "${pcre2Pattern}"\n`;
+                config += `| rex field=_raw "${toSpl2RexPattern(pattern)}"\n`;
             });
         }
 
