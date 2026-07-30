@@ -36,6 +36,11 @@ jobs:
         # Pinned: 6.x uses RECORD-based package purging that crashes on numpy
         # (FileNotFoundError bin/f2py) after scrubadub pulls scikit-learn/numpy.
         # 5.69.1 uses rmtree-based removal and builds cleanly.
+        # Re-confirmed broken on 6.5.3 (2026-07-30): _remove_package os.remove()s
+        # numpy RECORD entry lib/../../bin/f2py without an existence check.
+        # Knock-on: globalConfig meta.navColor (added in UCC 6.4.0) cannot be
+        # used until this is fixed upstream — 5.69.1 rejects the key, so the app
+        # bar colour ships via ucc-app/default/data/ui/nav/default.xml instead.
         run: pip install splunk-add-on-ucc-framework==5.69.1
 
       - name: Determine Version
