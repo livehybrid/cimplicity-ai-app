@@ -33,15 +33,17 @@ jobs:
           python-version: "3.9"
 
       - name: Install UCC Framework
-        # Pinned: 6.x uses RECORD-based package purging that crashes on numpy
-        # (FileNotFoundError bin/f2py) after scrubadub pulls scikit-learn/numpy.
-        # 5.69.1 uses rmtree-based removal and builds cleanly.
-        # Re-confirmed broken on 6.5.3 (2026-07-30): _remove_package os.remove()s
-        # numpy RECORD entry lib/../../bin/f2py without an existence check.
-        # Knock-on: globalConfig meta.navColor (added in UCC 6.4.0) cannot be
-        # used until this is fixed upstream — 5.69.1 rejects the key, so the app
-        # bar colour ships via ucc-app/default/data/ui/nav/default.xml instead.
-        run: pip install splunk-add-on-ucc-framework==5.69.1
+        # Version lives in build-requirements.txt so Dependabot bumps it (it
+        # never touches run: lines). ucc-gen 6.x has an unguarded os.remove()
+        # in its lib-purge (numpy's RECORD lists bin/f2py scripts pip never
+        # creates under --target; transitive numpy via scrubadub -> the whole
+        # build dies with FileNotFoundError; confirmed through 6.5.3, and the
+        # reason this repo sat pinned on 5.69.1 until 2026-07-30) —
+        # scripts/patch_ucc_purge.py guards it post-install. The script exits
+        # loudly if upstream changes, so a future bump re-evaluates the patch.
+        run: |
+          pip install -r build-requirements.txt
+          python scripts/patch_ucc_purge.py
 
       - name: Determine Version
         id: version

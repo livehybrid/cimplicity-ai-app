@@ -158,9 +158,10 @@
     "meta": {
         "name": "cim-plicity",
         "restRoot": "cim-plicity",
-        "version": "1.0.4+ebf870f",
+        "navColor": "#1e1633",
+        "version": "1.0.4+25fedfa",
         "displayName": "CIMPlicity AI",
-        "schemaVersion": "0.0.9",
+        "schemaVersion": "0.0.10",
         "supportedThemes": [
             "light",
             "dark"

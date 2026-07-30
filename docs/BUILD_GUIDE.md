@@ -22,7 +22,7 @@ cimplicity-ai-app/
 - **Node.js**: Version 14 or higher (recommended: 18)
 - **Yarn**: Version 1.2 or higher
 - **Python**: Version 3.9 (for backend components and UCC framework)
-- **UCC Framework**: `pip install splunk-add-on-ucc-framework==5.69.1` (6.x crashes purging transitive numpy, see CI workflow comment)
+- **UCC Framework**: `pip install -r build-requirements.txt && python scripts/patch_ucc_purge.py` (latest ucc-gen; the patch guards a 6.x lib-purge crash — see the script docstring)
 - **Git**: For version control
 
 ## Manual Build Process
@@ -38,7 +38,8 @@ cd cimplicity-ai-app
 npm install --global yarn
 
 # Install UCC framework
-pip install splunk-add-on-ucc-framework==5.69.1
+pip install -r build-requirements.txt
+python scripts/patch_ucc_purge.py
 
 # Run initial setup (installs dependencies and builds packages)
 yarn run setup
@@ -126,7 +127,7 @@ graph TD
 - **Self-hosted runner**: The `package` job runs on a self-hosted runner
 - **Node.js 18**: Sets up Node.js with Yarn caching
 - **Python 3.9**: Required for Splunk backend components
-- **UCC Framework**: Pinned to `splunk-add-on-ucc-framework==5.69.1`
+- **UCC Framework**: Version from `build-requirements.txt` (Dependabot-managed) + `scripts/patch_ucc_purge.py`
 - **Git**: For version determination and tagging
 
 #### 2. Version Determination

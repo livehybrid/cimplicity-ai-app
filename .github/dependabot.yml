@@ -1,5 +1,11 @@
 version: 2
 updates:
+  # Build tooling (build-requirements.txt at repo root, e.g. ucc-gen)
+  - package-ecosystem: "pip"
+    target-branch: "develop"
+    directory: "/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "pip"
     target-branch: "develop"
     directory: "/ucc-app/lib"
