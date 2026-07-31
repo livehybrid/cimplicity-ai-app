@@ -34,6 +34,14 @@ except Exception:  # pragma: no cover - only importable inside splunkd
     rest = None
 
 APP = "cim-plicity"
+# The MCP Server prefixes every tool name on load with _meta.name_prefix (falling back
+# to _meta.external_app_id) unless the name already starts with it, publishes THAT name
+# from tools/list, then resolves tools/call by looking it up as the mcp_tools_enabled
+# _key. Enabling under the raw name makes every call fail -32004 with the very name the
+# server advertised. "cim_plicity" keeps cim_plicity_ping as-is, prefixes the other
+# three cleanly, and avoids the hyphen + "cim-plicity_cim_plicity_ping" stutter that
+# external_app_id would produce.
+NAME_PREFIX = "cim_plicity"
 KV = "/servicesNS/nobody/Splunk_MCP_Server/storage/collections/data"
 
 # (name, method, endpoint, description, properties, required, body-template)
@@ -112,8 +120,18 @@ def _doc(name, method, endpoint, desc, props, required, body):
         "description": desc,
         "inputSchema": {"type": "object", "properties": props, "required": required},
         "_meta": {"tags": [APP], "execution": execution,
-                  "external_app_id": APP, "required_app": APP},
+                  "external_app_id": APP, "name_prefix": NAME_PREFIX,
+                  "required_app": APP},
     }
+
+
+def mcp_name(name, prefix=NAME_PREFIX):
+    """The name the MCP Server advertises for a tool, and the mcp_tools_enabled _key it
+    resolves tools/call by. Mirrors Tool._convert_from_new_schema in the MCP Server."""
+    prefix = (prefix or "").strip()
+    if prefix and not name.startswith(prefix + "_"):
+        return "%s_%s" % (prefix, name)
+    return name
 
 
 def _status(resp):
@@ -156,10 +174,11 @@ def _register_kv(sk):
     for name, method, endpoint, desc, props, required, body in TOOLS:
         doc = _doc(name, method, endpoint, desc, props, required, body)
         tid = doc["tool_id"]
+        advertised = mcp_name(name)
         s1 = _upsert(sk, "mcp_tools", tid, doc)
-        s2 = _upsert(sk, "mcp_tools_enabled", name,
-                     {"_key": name, "tool_id": tid, "collision_ids": []})
-        out.append({"name": name, "mcp_tools": s1, "enabled": s2})
+        s2 = _upsert(sk, "mcp_tools_enabled", advertised,
+                     {"_key": advertised, "tool_id": tid, "collision_ids": []})
+        out.append({"name": advertised, "mcp_tools": s1, "enabled": s2})
     return out
 
 
