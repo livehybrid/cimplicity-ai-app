@@ -159,7 +159,7 @@
         "name": "cim-plicity",
         "restRoot": "cim-plicity",
         "navColor": "#1e1633",
-        "version": "1.0.4+25fedfa",
+        "version": "1.0.4+d01b087",
         "displayName": "CIMPlicity AI",
         "schemaVersion": "0.0.10",
         "supportedThemes": [
