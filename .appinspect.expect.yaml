@@ -1,3 +1,17 @@
-# No expected failures. The previous waiver for check_for_binary_files_without_source_code
-# (bin/_lsprof.cpython-39-x86_64-linux-gnu.so) was removed with the binary itself on 2026-07-18.
-{}
+# Accepted (vetted) Splunk AppInspect failures for cim-plicity, consumed by the
+# appinspect-cli-action. Each comment must carry an ADDON-<n> / APPCERT-<n> reference.
+#
+# The previous waiver for check_for_binary_files_without_source_code
+# (bin/_lsprof.cpython-39-x86_64-linux-gnu.so) was removed with the binary itself
+# on 2026-07-18.
+#
+# --- TEMPORARY, remove once the build stops emitting appserver/templates/*.html ---
+# New in splunk-appinspect 4.3.0. Both are FUTURE_FAILURE, not hard failures: custom
+# Mako templates are deprecated in Splunk Enterprise 10.4 and removed in a later
+# version. AppInspect's own remediation is to regenerate with UCC framework >= 6.3.0
+# or @splunk/create >= 11.0.0. Raised with Splunk by Will (2026-08-03); these entries
+# only stop the 4.3.0 dependency bump sitting red until they advise.
+check_for_custom_mako_templates:
+    comment: 'ADDON-0003: FUTURE_FAILURE only. Generated Mako template under appserver/templates/; deprecated in Splunk 10.4. Remediation is a ucc-gen >= 6.3.0 regeneration, tracked separately. Raised with Splunk 2026-08-03.'
+check_for_existence_of_python_code_block_in_mako_template:
+    comment: 'ADDON-0004: FUTURE_FAILURE only. Same generated template as ADDON-0003. Not hand-written template code; no arbitrary Python of ours runs in CherryPy. Remove with ADDON-0003.'
