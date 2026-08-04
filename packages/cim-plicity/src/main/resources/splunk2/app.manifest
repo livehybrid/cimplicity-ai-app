@@ -1,0 +1,57 @@
+{
+    "dependencies": null,
+    "incompatibleApps": null,
+    "info": {
+        "author": [
+            {
+                "company": null,
+                "email": null,
+                "name": "Will Searle"
+            }
+        ],
+        "classification": {
+            "categories": [
+                "Security, Fraud & Compliance"
+            ],
+            "developmentStatus": "Production/Stable",
+            "intendedAudience": "IT Professionals"
+        },
+        "commonInformationModels": null,
+        "description": "CIMPlicity AI",
+        "id": {
+            "group": null,
+            "name": "cim-plicity",
+            "version": "0.0.0+0a19330"
+        },
+        "license": {
+            "name": "Apache License 2.0",
+            "text": "./LICENSES/Apache License 2.0.txt",
+            "uri": null
+        },
+        "privacyPolicy": {
+            "name": null,
+            "text": null,
+            "uri": null
+        },
+        "releaseDate": null,
+        "releaseNotes": {
+            "name": "README",
+            "text": "README.txt",
+            "uri": ""
+        },
+        "title": "CIMPlicity AI"
+    },
+    "inputGroups": null,
+    "platformRequirements": null,
+    "schemaVersion": "2.0.0",
+    "supportedDeployments": [
+        "_standalone",
+        "_distributed",
+        "_search_head_clustering"
+    ],
+    "targetWorkloads": [
+        "_search_heads",
+        "_indexers"
+    ],
+    "tasks": null
+}

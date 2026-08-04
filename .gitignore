@@ -14,3 +14,7 @@ build
 packages/cim-plicity/stage
 packages/cim-plicity/stage-old/
 *.tar.gz
+
+# excluded from preserve commit: vendored/regenerable, not source
+packages/cim-plicity/src/main/resources/splunk/lib/
+packages/cim-plicity/src/main/resources/splunk2/lib/

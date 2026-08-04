@@ -1,0 +1,15 @@
+splunktaucclib
+splunk-sdk
+solnlib
+numpy==1.23.5
+srsly
+pydantic
+typing-extensions>=4.10.0
+thinc>=8.1.0,<9.0.0
+spacy>=3.4.0,<4.0.0
+presidio-analyzer>=2.2.38,<3.0.0
+https://files.pythonhosted.org/packages/49/34/3a500af78444426b83d9045e5f11b94e0a7249323c843fc26d653c6c888c/spacy-3.8.7-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+https://files.pythonhosted.org/packages/1a/d5/0023a8b63a4fb1b831aaff3a3d700ad352e1c02a452275f53efdd79a361c/blis-1.2.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+https://files.pythonhosted.org/packages/86/44/2101cc0890c3621b90365c9ee8d7291a597c0722ad66eccd6ffa7f1bcc09/regex-2024.11.6-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+#https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl
+https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
