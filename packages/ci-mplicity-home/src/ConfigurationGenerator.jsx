@@ -672,7 +672,7 @@ const ConfigurationGenerator = ({ extractedFields = [], cimMapping = {}, piiResu
                             Generate Splunk Configuration Files
                         </Heading>
                         <P style={{ opacity: 0.8 }}>
-                            Generate proper Splunk configuration files (props.conf, transforms.conf) and SPL2 examples
+                            Generate proper Splunk configuration files (props.conf) and SPL2 examples
                             based on your field extractions, CIM mappings, and PII detection results.
                         </P>
                     </StyledBox>

@@ -12,7 +12,7 @@ Check out the app at SplunkBase [https://splunkbase.splunk.com/app/7945](https:/
 - 🤖 **AI-Powered Field Extraction**: Automatically detect and extract fields from log data ([endpoint docs](docs/AI_DETECTION_ENDPOINT.md))
 - 🗺️ **CIM Mapping**: Map extracted fields to Splunk Common Information Model (CIM) data models, loaded dynamically from Splunk_SA_CIM when installed ([endpoint docs](docs/CIM_MAPPING_ENDPOINT.md))
 - 🔒 **PII Detection**: Identify and redact Personally Identifiable Information ([endpoint docs](docs/PII_DETECTION_ENDPOINT.md))
-- ⚙️ **Configuration Generation**: Generate Splunk props.conf and transforms.conf automatically
+- ⚙️ **Configuration Generation**: Generate Splunk props.conf and SPL2 Ingest Processor config automatically
 - 📊 **Multiple Format Support**: JSON, CSV, Syslog, XML, and custom regex patterns
 - 🔌 **MCP Tools**: The endpoints are registered as Splunk MCP Server tools for AI agents ([MCP docs](docs/MCP_TOOLS.md))
 
@@ -193,7 +193,7 @@ yarn run lint
 1. **Detector Configuration**: Verify enabled detectors
 2. **Sample Size**: Use sufficient sample data for detection
 3. **Pattern Matching**: Test custom patterns with sample data
-4. **Redaction Rules**: Check generated transforms.conf syntax
+4. **Redaction Rules**: Check generated props.conf SEDCMD syntax
 
 
 ### Support
