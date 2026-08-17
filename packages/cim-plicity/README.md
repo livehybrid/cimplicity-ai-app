@@ -7,7 +7,7 @@ This package provides the backend logic for the CIMplicity AI Splunk App, includ
 
 ## Setup
 - Install dependencies as per the main repo instructions
-- Configure your LLM API key in the Splunk app settings (see [main README](../../../../README.md))
+- Configure your LLM API key in the Splunk app settings (see [main README](../../README.md))
 
 ## Usage
 - The backend is called automatically by the UI for field extraction, PII detection, and config generation

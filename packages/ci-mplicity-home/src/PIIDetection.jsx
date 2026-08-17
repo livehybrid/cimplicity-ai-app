@@ -1,33 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import Button from '@splunk/react-ui/Button';
+import ControlGroup from '@splunk/react-ui/ControlGroup';
+import Heading from '@splunk/react-ui/Heading';
+import Message from '@splunk/react-ui/Message';
+import Switch from '@splunk/react-ui/Switch';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import Table from '@splunk/react-ui/Table';
 import Card from '@splunk/react-ui/Card';
 import P from '@splunk/react-ui/Paragraph';
-import styled from 'styled-components';
-import Typography from '@splunk/react-ui/Typography';
 import Text from '@splunk/react-ui/Text';
-import TextArea from '@splunk/react-ui/TextArea';
-
-const PiiCard = styled(Card)`
-    margin-top: 20px;
-`;
-
-const ResultsHeader = styled.h3`
-    margin-top: 20px;
-    margin-bottom: 10px;
-`;
-
-const ErrorMessage = styled(P)`
-    color: red;
-`;
+import styled from 'styled-components';
+import { variables } from '@splunk/themes';
 
 const PreviewContainer = styled.div`
     margin-top: 20px;
     padding: 15px;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
+    background-color: ${variables.backgroundColorSection};
+    border: 1px solid ${variables.borderColor};
+    color: ${variables.textColor};
     border-radius: 4px;
     font-family: 'Courier New', monospace;
     font-size: 12px;
@@ -40,8 +31,9 @@ const PreviewContainer = styled.div`
 const OriginalDataContainer = styled.div`
     margin-top: 10px;
     padding: 15px;
-    background-color: #ffffff;
-    border: 1px solid #dee2e6;
+    background-color: ${variables.backgroundColor};
+    border: 1px solid ${variables.borderColor};
+    color: ${variables.textColor};
     border-radius: 4px;
     font-family: 'Courier New', monospace;
     font-size: 12px;
@@ -51,6 +43,20 @@ const OriginalDataContainer = styled.div`
     overflow-y: auto;
 `;
 
+const StyledPatternSection = styled.div`
+    margin-top: 20px;
+    border: 1px solid ${variables.borderColor};
+    border-radius: 4px;
+    padding: 15px;
+`;
+
+const StyledPatternForm = styled.div`
+    border: 1px solid ${variables.borderColor};
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+`;
+
 const PII_TYPE_ALLOWLIST = [
     'EMAIL', 'IP_ADDRESS', 'IPADDRESSDETECTOR', 'US_BANK_NUMBER', 'CREDIT_CARD', 'CREDITCARD', 'PHONE_NUMBER', 'PHONEDETECTOR', 'SSN', 'PASSPORT', 'PERSON', 'ADDRESS', 'MAC_ADDRESS', 'IBAN', 'SWIFT_CODE', 'URL', 'URLDETECTOR', 'USER_ID', 'USERNAME', 'PASSWORD', 'TOKEN', 'API_KEY', 'ACCESS_KEY', 'SECRET_KEY', 'AWS_KEY', 'GCP_KEY', 'AZURE_KEY', 'PRIVATE_KEY', 'LICENSE_PLATE', 'MEDICAL', 'HEALTH', 'NATIONAL_ID', 'TAX_ID', 'DRIVER_LICENSE', 'VEHICLE_ID', 'DEVICE_ID', 'COOKIE', 'SESSION_ID', 'FACE_ID', 'VOICE_ID', 'FINGERPRINT', 'BIOMETRIC', 'GEOLOCATION', 'LOCATION', 'BANK_ACCOUNT', 'ROUTING_NUMBER', 'ACCOUNT_NUMBER', 'CARD_NUMBER', 'CVV', 'EXPIRY_DATE', 'SECURITY_CODE', 'PIN', 'MOTHER_MAIDEN_NAME', 'BIRTHDATE', 'BIRTH_PLACE', 'EMPLOYEE_ID', 'STUDENT_ID', 'CUSTOMER_ID', 'MEMBER_ID', 'INSURANCE_ID', 'POLICY_NUMBER', 'ORDER_ID', 'TRANSACTION_ID', 'TICKET_ID', 'RESERVATION_ID', 'BOOKING_ID', 'REFERENCE_NUMBER', 'SERIAL_NUMBER', 'IMEI', 'IMSI', 'MSISDN', 'ICCID', 'PLATE_NUMBER', 'VIN', 'REGISTRATION_NUMBER', 'OTHER' // Add more as needed
 ];
@@ -58,40 +64,17 @@ const PII_TYPE_IGNORELIST = [
     'DATE_TIME', 'TIME', 'DATE', 'DATETIME', 'TIMESTAMP' // Add more as needed
 ];
 
-const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleData, onContinue, onBack, selectedRedactions }) => {
+const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleData, onContinue, onBack }) => {
     const hasData = sampleData && sampleData.trim().length > 0;
 
     // Support both top-level and payload-wrapped results
     const piiList = piiResults && (piiResults.pii_results || (piiResults.payload && piiResults.payload.pii_results)) || [];
-    const suggestion = piiResults && (piiResults.suggestion || (piiResults.payload && piiResults.payload.suggestion)) || '';
 
-    // Filter to only highest scoring type per text span
-    const filteredResults = useMemo(() => {
-        if (!piiList.length) return [];
-        const byText = {};
-        piiList.forEach(item => {
-            const key = `${item.start}-${item.end}`;
-            if (!byText[key] || item.score > byText[key].score) {
-                byText[key] = item;
-            }
-        });
-        return Object.values(byText);
-    }, [piiList]);
-
-    // Add state for custom PII types and patterns
-    const [customPiiTypes, setCustomPiiTypes] = useState([]);
+    // Add state for custom PII patterns
     const [customPatterns, setCustomPatterns] = useState([]);
     const [newPatternName, setNewPatternName] = useState('');
     const [newPatternRegex, setNewPatternRegex] = useState('');
     const [showCustomPatternForm, setShowCustomPatternForm] = useState(false);
-
-    // UI for adding custom PII types
-    const addCustomType = (e) => {
-        const newType = e.target.value.trim();
-        if (newType && !PII_TYPE_ALLOWLIST.includes(newType.toUpperCase()) && !PII_TYPE_IGNORELIST.includes(newType.toUpperCase())) {
-            setCustomPiiTypes(prev => [...prev, newType]);
-        }
-    };
 
     // Add custom pattern
     const addCustomPattern = () => {
@@ -129,12 +112,6 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
             grouped[type].values.add(item.text);
             grouped[type].items.push(item);
         });
-        // Add custom types
-        customPiiTypes.forEach(type => {
-            if (!grouped[type]) grouped[type] = { type, values: new Set(), items: [] };
-            grouped[type].values.add(type); // Display custom types as their own value
-            grouped[type].items.push({ type, text: type, start: 0, end: type.length, score: 1 }); // Dummy item for display
-        });
         // Convert to array
         return Object.values(grouped).map(group => ({
             type: group.type,
@@ -142,7 +119,7 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
             count: group.values.size,
             items: group.items
         }));
-    }, [piiList, customPiiTypes]);
+    }, [piiList]);
 
     // State for which PII types to redact
     const [selectedTypes, setSelectedTypes] = useState(() => {
@@ -236,7 +213,11 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                 </div>
                 
                 {!hasData && <P>Please provide sample data in the first step.</P>}
-                {piiError && <ErrorMessage>Error: {piiError.message}</ErrorMessage>}
+                {piiError && (
+                    <Message appearance="fill" type="error">
+                        Error: {piiError.message}
+                    </Message>
+                )}
                 
                 {/* PII Analysis Results - Now properly positioned below the button */}
                 {piiList.length > 0 && (
@@ -247,7 +228,7 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                                 <P>
                                     <strong>Analysis Complete:</strong> Found {filteredAndGrouped.length} type(s) of PII with {filteredAndGrouped.reduce((sum, group) => sum + group.count, 0)} total instances.
                                 </P>
-                                <ResultsHeader>Detected PII Types</ResultsHeader>
+                                <Heading level={3} style={{ marginTop: 20, marginBottom: 10 }}>Detected PII Types</Heading>
                                 <Table>
                                     <Table.Head>
                                         <Table.HeadCell>Redact?</Table.HeadCell>
@@ -257,7 +238,7 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                                         <Table.HeadCell>Regex Pattern</Table.HeadCell>
                                     </Table.Head>
                                     <Table.Body>
-                                        {filteredAndGrouped.map((group, index) => {
+                                        {filteredAndGrouped.map((group) => {
                                             // Get regex pattern from the first item of this type
                                             const firstItem = group.items[0];
                                             const regexPattern = firstItem?.regex_pattern || '';
@@ -265,10 +246,11 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                                             return (
                                                 <Table.Row key={group.type}>
                                                     <Table.Cell>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!!selectedTypes[group.type]}
-                                                            onChange={() => handleToggleType(group.type)}
+                                                        <Switch
+                                                            appearance="checkbox"
+                                                            selected={!!selectedTypes[group.type]}
+                                                            onClick={() => handleToggleType(group.type)}
+                                                            aria-label={`Redact ${group.type}`}
                                                         />
                                                     </Table.Cell>
                                                     <Table.Cell>{group.type}</Table.Cell>
@@ -288,16 +270,16 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                                 {/* Redacted Preview */}
                                 {redactedPreview !== sampleData && (
                                     <div style={{ marginTop: '20px' }}>
-                                        <h4>Redacted Preview</h4>
+                                        <Heading level={4}>Redacted Preview</Heading>
                                         <PreviewContainer>
                                             {redactedPreview}
                                         </PreviewContainer>
                                     </div>
                                 )}
-                                
+
                                 {/* Original Sample Data */}
                                 <div style={{ marginTop: '20px' }}>
-                                    <h4>Original Sample Data</h4>
+                                    <Heading level={4}>Original Sample Data</Heading>
                                     <OriginalDataContainer>
                                         {sampleData}
                                     </OriginalDataContainer>
@@ -324,14 +306,14 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                 )}
                 
                 {/* Custom PII Patterns Section */}
-                <div style={{ marginTop: '20px', border: '1px solid #dee2e6', borderRadius: '4px', padding: '15px' }}>
-                    <h4>Custom PII Patterns</h4>
+                <StyledPatternSection>
+                    <Heading level={4}>Custom PII Patterns</Heading>
                     <P>Add custom regex patterns to detect specific PII types in your data.</P>
-                    
+
                     {/* Custom Patterns List */}
                     {customPatterns.length > 0 && (
                         <div style={{ marginBottom: '15px' }}>
-                            <h5>Active Custom Patterns:</h5>
+                            <Heading level={4}>Active Custom Patterns:</Heading>
                             <Table>
                                 <Table.Head>
                                     <Table.HeadCell>Pattern Name</Table.HeadCell>
@@ -361,43 +343,23 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                     
                     {/* Add New Pattern Form */}
                     {showCustomPatternForm ? (
-                        <div style={{ border: '1px solid #ccc', borderRadius: '4px', padding: '15px', marginBottom: '15px' }}>
-                            <h5>Add Custom Pattern</h5>
-                            <div style={{ marginBottom: '10px' }}>
-                                <label>Pattern Name:</label>
-                                <input
-                                    type="text"
+                        <StyledPatternForm>
+                            <Heading level={4}>Add Custom Pattern</Heading>
+                            <ControlGroup label="Pattern Name" labelPosition="top" style={{ marginBottom: 10 }}>
+                                <Text
                                     value={newPatternName}
-                                    onChange={(e) => setNewPatternName(e.target.value)}
+                                    onChange={(e, { value }) => setNewPatternName(value)}
                                     placeholder="e.g., Employee ID, Project Code"
-                                    style={{ 
-                                        width: '100%', 
-                                        marginTop: '5px',
-                                        padding: '8px',
-                                        border: '1px solid #ccc',
-                                        borderRadius: '4px',
-                                        fontSize: '14px'
-                                    }}
                                 />
-                            </div>
-                            <div style={{ marginBottom: '10px' }}>
-                                <label>Regex Pattern:</label>
-                                <input
-                                    type="text"
+                            </ControlGroup>
+                            <ControlGroup label="Regex Pattern" labelPosition="top" style={{ marginBottom: 10 }}>
+                                <Text
                                     value={newPatternRegex}
-                                    onChange={(e) => setNewPatternRegex(e.target.value)}
+                                    onChange={(e, { value }) => setNewPatternRegex(value)}
                                     placeholder="e.g., \\bEMP\\d{6}\\b"
-                                    style={{ 
-                                        width: '100%', 
-                                        marginTop: '5px',
-                                        padding: '8px',
-                                        border: '1px solid #ccc',
-                                        borderRadius: '4px',
-                                        fontSize: '14px',
-                                        fontFamily: 'monospace'
-                                    }}
+                                    style={{ fontFamily: 'monospace' }}
                                 />
-                            </div>
+                            </ControlGroup>
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <Button
                                     appearance="primary"
@@ -414,7 +376,7 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                                     }}
                                 />
                             </div>
-                        </div>
+                        </StyledPatternForm>
                     ) : (
                         <Button
                             appearance="secondary"
@@ -422,7 +384,7 @@ const PIIDetection = ({ onDetectPii, piiResults, piiLoading, piiError, sampleDat
                             onClick={() => setShowCustomPatternForm(true)}
                         />
                     )}
-                </div>
+                </StyledPatternSection>
 
                 <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between' }}>
                     <Button onClick={onBack} label="Back" />
@@ -441,7 +403,6 @@ PIIDetection.propTypes = {
     sampleData: PropTypes.string,
     onContinue: PropTypes.func.isRequired,
     onBack: PropTypes.func.isRequired,
-    selectedRedactions: PropTypes.array,
 };
 
 export default PIIDetection; 

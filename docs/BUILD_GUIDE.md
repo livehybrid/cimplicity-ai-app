@@ -7,10 +7,11 @@ This document describes how to build the CiMplicity Splunk App project, both man
 ## Project Structure
 
 ```
-splunk-app/
+cimplicity-ai-app/
 ├── packages/
 │   ├── ci-mplicity-home/     # Main React UI package
 │   └── cim-plicity/          # Core Splunk app package
+├── ucc-app/                  # UCC (Universal Configuration Console) source: bin/, default/, app.manifest
 ├── .github/workflows/        # CI/CD automation
 ├── docs/                     # Documentation
 └── package.json             # Root package configuration
@@ -21,7 +22,7 @@ splunk-app/
 - **Node.js**: Version 14 or higher (recommended: 18)
 - **Yarn**: Version 1.2 or higher
 - **Python**: Version 3.9 (for backend components and UCC framework)
-- **UCC Framework**: `pip install splunk-add-on-ucc-framework`
+- **UCC Framework**: `pip install -r build-requirements.txt && python scripts/patch_ucc_purge.py` (latest ucc-gen; the patch guards a 6.x lib-purge crash — see the script docstring)
 - **Git**: For version control
 
 ## Manual Build Process
@@ -31,13 +32,14 @@ splunk-app/
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd splunk-app
+cd cimplicity-ai-app
 
 # Install yarn if not already installed
 npm install --global yarn
 
 # Install UCC framework
-pip install splunk-add-on-ucc-framework
+pip install -r build-requirements.txt
+python scripts/patch_ucc_purge.py
 
 # Run initial setup (installs dependencies and builds packages)
 yarn run setup
@@ -50,7 +52,7 @@ yarn run setup
 yarn install
 
 # Generate UCC framework components
-ucc-gen --source ucc-app -o build/
+ucc-gen build --source ucc-app -o build/
 
 # Copy UCC files to React app structure
 cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
@@ -109,7 +111,8 @@ Our GitHub Actions workflow automates the build, test, and deployment process. T
 graph TD
     A[Push to Repository] --> B[Setup Environment]
     B --> C[Install Dependencies]
-    C --> D[Build Application]
+    C --> T[Python Tests]
+    T --> D[Build Application]
     D --> E[Update Version]
     E --> F[Create Package]
     F --> G[Upload Artifacts]
@@ -121,19 +124,22 @@ graph TD
 ### Detailed Pipeline Steps
 
 #### 1. Environment Setup
-- **Ubuntu Latest**: Uses latest Ubuntu runner
+- **Self-hosted runner**: The `package` job runs on a self-hosted runner
 - **Node.js 18**: Sets up Node.js with Yarn caching
 - **Python 3.9**: Required for Splunk backend components
+- **UCC Framework**: Version from `build-requirements.txt` (Dependabot-managed) + `scripts/patch_ucc_purge.py`
 - **Git**: For version determination and tagging
 
 #### 2. Version Determination
 ```bash
-# Calculates version from git tags or defaults to 1.0.0
+# Tag builds use the tag; branch builds derive from the latest v* tag via git describe
 SHORT_COMMIT_HASH=$(git rev-parse --short HEAD)
 if [[ "$GITHUB_REF" == refs/tags/* ]]; then
   TAG_VERSION=${GITHUB_REF#refs/tags/v}
 else
-  TAG_VERSION="1.0.0"
+  # e.g. v1.0.4-3-gabc1234 -> 1.0.4-3-gabc1234; no tag -> 0.0.0-g<hash>
+  DESCRIBE=$(git describe --tags --match "v*" --always)
+  TAG_VERSION="${DESCRIBE#v}"
 fi
 VERSION_WITH_HASH="${TAG_VERSION}+${SHORT_COMMIT_HASH}"
 ```
@@ -146,16 +152,24 @@ yarn install
 - Leverages GitHub Actions caching for dependencies
 - Installs all monorepo dependencies
 
-#### 4. UCC Framework Generation
+#### 4. Python Tests
 ```bash
-ucc-gen --source ucc-app -o build/
+pip install pytest
+python3 -m pytest tests/ -q
+```
+- Runs the Python unit test suite (backend logic such as CIM model loading and PII detection)
+- Fails the pipeline before any packaging work if a test breaks
+
+#### 5. UCC Framework Generation
+```bash
+ucc-gen build --source ucc-app -o build/
 cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
 ```
 - Generates UCC (Universal Configuration Console) components for credential management
 - Creates configuration UI components and REST endpoints
 - Copies generated files into the React app structure
 
-#### 5. Build Process
+#### 6. Build Process
 ```bash
 yarn run build  # Equivalent to: lerna run build
 ```
@@ -165,9 +179,10 @@ yarn run build  # Equivalent to: lerna run build
 - Copies static assets and Splunk configuration files
 - Generates the `stage/` directory with complete app
 
-#### 6. Version Update and AppInspect Fixes
+#### 7. Version Update and Reload Triggers
+Runs in `packages/cim-plicity/stage/`:
 ```bash
-# Updates app.conf with calculated version (both [id] and [launcher] stanzas)
+# Updates app.conf with the calculated version (both [id] and [launcher] stanzas)
 sed -i "s/version = .*/version = ${TAG_VERSION}/g" default/app.conf
 
 # Update app.manifest version if it exists
@@ -175,29 +190,29 @@ sed -i "s/\"version\": \".*\"/\"version\": \"${TAG_VERSION}\"/g" app.manifest
 
 # Update package id to match directory name
 sed -i "s/id = .*/id = cim-plicity/g" default/app.conf
-
-# Add reload trigger for custom config files
-echo "[triggers]" >> default/app.conf
-echo "reload.splunk_create = simple" >> default/app.conf
-
-# Fix Python version in REST endpoints
-sed -i '/python.version = python3/' default/restmap.conf
 ```
+It then ensures `app.conf [triggers]` has a reload entry for every shipped custom conf (AppInspect `check_reload_trigger_for_all_custom_confs`):
+- `reload.tools = http_post /cim-plicity/autoregister`: fires the app's MCP self-registration endpoint on app-state changes (see [MCP_TOOLS.md](MCP_TOOLS.md))
+- `reload.cim-plicity_settings = simple`: for the UCC settings conf
 
-#### 7. Package Creation
+Each entry is added only if missing, because `ucc-gen` may already emit its own `[triggers]` stanza.
+
+#### 8. Package Creation
 ```bash
-# Creates distribution tarballs with proper directory structure
+# Copy the stage directory into a correctly named folder, clean it, then package
 mkdir -p temp-package/cim-plicity
 cp -r packages/cim-plicity/stage/* temp-package/cim-plicity/
+# AppInspect clean-up: remove meson.build, *.pyc, __pycache__, hidden files,
+# compiled binaries and test_*.py from bin/, then normalise permissions (755/644)
 cd temp-package
-tar -czf ../dist/cim-plicity-${VERSION_WITH_HASH}.tar.gz cim-plicity/
-tar -czf ../dist/cim-plicity-latest.tar.gz cim-plicity/
+ucc-gen package --path cim-plicity/ -o ../dist/
 ```
+The tarball name comes from `ucc-gen package` (app id + version from `app.conf`), e.g. `dist/cim-plicity-<version>.tar.gz`. No `-latest` tarball is produced.
 
-#### 8. Artifact Upload
-- Uploads distribution packages
-- Uploads stage directory for inspection
+#### 9. Artifact Upload
+- Uploads the `dist/` distribution package
 - Makes artifacts available for subsequent jobs
+- (A stage-directory upload step exists in the workflow but is commented out)
 
 ### Quality Assurance Pipeline
 
@@ -224,18 +239,26 @@ tar -czf ../dist/cim-plicity-latest.tar.gz cim-plicity/
 ### Deployment Pipeline
 
 #### GitHub Release Publishing
-- **Trigger**: Successful AppInspect validation
-- **Artifacts**: Versioned and latest tarballs
+- **Trigger**: Successful AppInspect validation (CLI and API jobs)
+- **Artifacts**: The versioned tarball from `dist/`
 - **Tags**: Automatic release creation for version tags
 - **Assets**: Downloadable Splunk app packages
 
 ## Testing Strategy
 
-### Unit Testing
+### Python Unit Testing
+- **Framework**: pytest
+- **Coverage**: Backend logic (CIM model loading, PII detection)
+- **Location**: `tests/`
+- **Command**: `python3 -m pytest tests/ -q`
+- **CI**: Runs on every push (the "Run Python tests" step)
+
+### JavaScript Unit Testing
 - **Framework**: Jest
 - **Coverage**: React components and utility functions
 - **Location**: `src/tests/` directories
 - **Command**: `yarn run test`
+- **CI**: Not run in CI today; run locally before pushing (same for `yarn run lint`)
 
 #### Test Files
 ```
@@ -283,8 +306,7 @@ packages/cim-plicity/stage/
 ### Distribution Packages
 ```
 dist/
-├── cim-plicity-{version}+{hash}.tar.gz  # Versioned package
-└── cim-plicity-latest.tar.gz            # Latest package
+└── cim-plicity-{version}.tar.gz  # Versioned package from ucc-gen package
 ```
 
 ## Troubleshooting
@@ -321,9 +343,10 @@ tar -czf app.tar.gz cim-plicity/
 **Missing Reload Triggers:**
 ```bash
 # Custom config files need reload triggers in app.conf
-# Fix: Add [triggers] stanza
+# Fix: Add an entry per custom conf under [triggers], e.g.
 echo "[triggers]" >> default/app.conf
-echo "reload.splunk_create = simple" >> default/app.conf
+echo "reload.tools = http_post /cim-plicity/autoregister" >> default/app.conf
+echo "reload.cim-plicity_settings = simple" >> default/app.conf
 ```
 
 **Python Version Issues:**

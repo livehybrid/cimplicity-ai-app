@@ -93,16 +93,13 @@ class PiiDetectionLogic:
                     detector_cls = getattr(scrubadub.detectors, detector_name)
                     detectors.append(detector_cls())
             except Exception as e:
-                print(f"Could not load detector {detector_name}: {e}")
                 logging.error(f"Could not load detector {detector_name}: {e}")
-        
+
         if not detectors:
             # fallback: add a basic detector to avoid empty list error
-            print("Warning: No detectors loaded successfully, using fallback EmailDetector")
             logging.warning("No detectors loaded successfully, using fallback EmailDetector")
             detectors.append(EmailDetector())
-        
-        print(f"Successfully loaded {len(detectors)} detectors")
+
         logging.info(f"Successfully loaded {len(detectors)} detectors")
         return detectors
     
@@ -140,10 +137,10 @@ class PiiDetectionLogic:
                     })
                     
             except re.error as e:
-                print(f"Invalid regex pattern '{regex_pattern}': {e}")
+                logging.error(f"Invalid regex pattern '{regex_pattern}': {e}")
                 continue
             except Exception as e:
-                print(f"Error processing custom pattern '{pattern_name}': {e}")
+                logging.error(f"Error processing custom pattern '{pattern_name}': {e}")
                 continue
         
         return results
@@ -207,7 +204,8 @@ class PiiDetectionLogic:
             }
             
         except Exception as e:
-            return {'error': str(e)}
+            logging.error(f"Error during PII detection: {e}", exc_info=True)
+            return {'error': 'Internal error during PII detection'}
     
     def infer_field_name(self, text: str, start: int, end: int, entity_type: str) -> str:
         """

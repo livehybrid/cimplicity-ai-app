@@ -25,7 +25,7 @@ const runCommands = {
         link: () => shell.exec('mklink /D "%SPLUNK_HOME%\\etc\\apps\\cim-plicity" "%cd%\\stage"'),
     },
     nix: {
-        build: () => shell.exec('export NODE_ENV=development && ./node_modules/.bin/webpack --mode=development'),
+        build: () => shell.exec('export NODE_ENV=production && ./node_modules/.bin/webpack --mode=production'),
         link: () => shell.exec('ln -s $PWD/stage $SPLUNK_HOME/etc/apps/cim-plicity'),
     },
 };

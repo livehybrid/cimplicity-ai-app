@@ -1,4 +1,15 @@
-splunktaucclib
+splunktaucclib==8.2.0
 splunk-sdk==2.1.1
-solnlib
-scrubadub
+solnlib==8.1.0
+# scrubadub 2.0.1 hard-depends on scikit-learn (-> scipy) and textblob (-> nltk).
+# Splunk 10.x runs persistent handlers on Python 3.9 by default (see restmap
+# python.required = 3.9), so these transitive deps MUST be pinned to their last
+# Python-3.9-compatible releases. Unpinned, pip pulls nltk 3.10 / scipy 1.18 /
+# scikit-learn 1.9 which require Python 3.10/3.11+ and fail to import on 3.9
+# (nltk 3.10 uses PEP-604 `X | None` syntax; scipy/scikit-learn drop cp39 wheels),
+# surfacing as persistconn "bad character in reply size". Keep this in lockstep
+# with python.required and build the lib with a cp39 toolchain.
+scrubadub==2.0.1
+nltk==3.8.1
+scipy==1.13.1
+scikit-learn==1.6.1

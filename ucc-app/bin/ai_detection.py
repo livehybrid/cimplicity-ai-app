@@ -25,13 +25,7 @@ new_paths.insert(0, os.path.sep.join([os.path.dirname(__file__), ta_name]))
 sys.path = new_paths
 
 import logging
-from splunktaucclib.splunk_aoblib.setup_util import Setup_Util
 from solnlib import conf_manager
-from base64 import b64encode
-import splunk.entity
-import splunk.Intersplunk
-import splunklib.client as client
-import splunklib.results as results
 import requests
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
@@ -39,19 +33,17 @@ import json
 
 ADDON_NAME = 'cim-plicity'
 
+# Level is set from the [logging] stanza per request, default INFO
 logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}.log'])
-logging.basicConfig(filename=logfile,level=logging.DEBUG)
+logging.basicConfig(filename=logfile,level=logging.INFO)
 
 
 class AiDetection(PersistentServerConnectionApplication):
     def __init__(self, _command_line, _command_arg):
         super(PersistentServerConnectionApplication, self).__init__()
-        self.service = None
 
-    def get_ai_secret(self):
-        """
-        Retrieves the OpenRouter API key from Splunk's credential store.
-        """
+    def get_ai_settings(self):
+        """Return the ai_configuration stanza as a dict ({} on failure)."""
         try:
             cfm = conf_manager.ConfManager(
                 self.system_session_key,
@@ -59,9 +51,26 @@ class AiDetection(PersistentServerConnectionApplication):
                 realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
             )
             account_conf_file = cfm.get_conf("cim-plicity_settings")
-            logging.info(f"Account conf file: {account_conf_file}")
-            return account_conf_file.get("ai_configuration").get("api_key")
+            return account_conf_file.get("ai_configuration") or {}
+        except Exception as e:
+            logging.error(f"Could not read ai_configuration settings: {e}", exc_info=True)
+            return {}
 
+    def apply_log_level(self):
+        """Honour the [logging] log_level setting (default INFO)."""
+        try:
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
+            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+        except Exception:
+            logging.getLogger().setLevel(logging.INFO)
+
+    def get_ai_secret(self):
+        """
+        Retrieves the OpenRouter API key from Splunk's credential store.
+        """
+        try:
+            return self.get_ai_settings().get("api_key")
         except Exception as e:
             logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
@@ -109,23 +118,14 @@ class AiDetection(PersistentServerConnectionApplication):
         """
         try:
             logging.info("Sending request to OpenRouter...")
-            logging.info(f"API key: {api_key}")
-            # Fetch model from config (default to Claude 3.5 Sonnet)
-            try:
-                cfm = conf_manager.ConfManager(
-                    self.system_session_key,
-                    ADDON_NAME,
-                    realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
-                )
-                account_conf_file = cfm.get_conf("cim-plicity_settings")
-                logging.info(f"Account conf file: {account_conf_file}")
-                model = account_conf_file.get("ai_configuration").get("model")
-            except:
-                model = 'anthropic/claude-3-5-sonnet-20241022'
+            # Fetch endpoint and model from config, with working defaults
+            ai_conf = self.get_ai_settings()
+            api_endpoint = ai_conf.get("api_endpoint") or 'https://openrouter.ai/api/v1/chat/completions'
+            model = ai_conf.get("model") or 'anthropic/claude-3-5-sonnet-20241022'
             logging.info(f"Using model: {model}")
 
             response = requests.post(
-                url=account_conf_file.get("ai_configuration").get("api_endpoint"),
+                url=api_endpoint,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "X-Title": "Cim-plicity",
@@ -141,8 +141,7 @@ class AiDetection(PersistentServerConnectionApplication):
             )
             response.raise_for_status()
             content = response.json()['choices'][0]['message']['content']
-            logging.info(f"Content: {json.dumps(content, indent=4)}")
-            logging.info("Received successful response from OpenRouter.")
+            logging.info(f"Received successful response from OpenRouter ({len(content)} chars).")
             return json.loads(content)
         except requests.exceptions.Timeout:
             logging.error("Request to OpenRouter timed out.")
@@ -164,7 +163,9 @@ class AiDetection(PersistentServerConnectionApplication):
             for field in fields:
                 if 'regex' in field:
                     try:
-                        regex = field['regex']
+                        # Python re rejects PCRE (?<name>) groups: translate to
+                        # (?P<name>) for positioning, leaving (?<= / (?<! lookbehinds
+                        regex = re.sub(r'\(\?<(?![=!])', '(?P<', field['regex'])
                         match = re.search(regex, sample_data)
                         if match:
                             field_positions.append({
@@ -172,8 +173,12 @@ class AiDetection(PersistentServerConnectionApplication):
                                 'start': match.start(),
                                 'end': match.end()
                             })
-                    except:
+                    except re.error as e:
+                        logging.warning(f"Could not position field '{field.get('name')}' in sample: {e}")
                         continue
+            if not field_positions:
+                logging.warning("No fields could be positioned in the sample; skipping combined regex generation")
+                return None
             field_positions.sort(key=lambda x: x['start'])
             last_end = 0
             for pos in field_positions:
@@ -297,19 +302,24 @@ class AiDetection(PersistentServerConnectionApplication):
         elif 'combined_extraction' in results:
             normalized['combined_regex'] = results['combined_extraction']
         
-        # Handle timestamp analysis
+        # Handle timestamp analysis: the three flat keys are independent (the
+        # prompt returns them together), with nested timestamp_analysis as a
+        # fallback for models that wrap them
         if 'time_format' in results:
             normalized['time_format'] = results['time_format']
-        elif 'time_prefix' in results:
+        if 'time_prefix' in results:
             normalized['time_prefix'] = results['time_prefix']
-        elif 'max_timestamp_lookahead' in results:
+        if 'max_timestamp_lookahead' in results:
             normalized['max_timestamp_lookahead'] = str(results['max_timestamp_lookahead'])
-        elif 'timestamp_analysis' in results:
+        if 'timestamp_analysis' in results:
             timestamp_analysis = results['timestamp_analysis']
-            normalized['time_format'] = timestamp_analysis.get('TIME_FORMAT', 'CURRENT_TIME')
-            normalized['time_prefix'] = timestamp_analysis.get('TIME_PREFIX', '')
-            normalized['max_timestamp_lookahead'] = str(timestamp_analysis.get('MAX_TIMESTAMP_LOOKAHEAD', '25'))
-        
+            if 'time_format' not in results:
+                normalized['time_format'] = timestamp_analysis.get('TIME_FORMAT', 'CURRENT_TIME')
+            if 'time_prefix' not in results:
+                normalized['time_prefix'] = timestamp_analysis.get('TIME_PREFIX', '')
+            if 'max_timestamp_lookahead' not in results:
+                normalized['max_timestamp_lookahead'] = str(timestamp_analysis.get('MAX_TIMESTAMP_LOOKAHEAD', '25'))
+
         return normalized
 
     # Handle a syncronous from splunkd.
@@ -322,16 +332,23 @@ class AiDetection(PersistentServerConnectionApplication):
                  it will automatically be JSON encoded before being returned.
         """
         logging.info("Starting AI detection rest handler")
-        inbound_payload = json.loads(in_string)
-        self.system_session_key = inbound_payload['system_authtoken']
-        self.user_name = inbound_payload['session']['user']
         try:
-            self.service = client.connect(token=self.system_session_key, owner="nobody", app=ta_name)
+            inbound_payload = json.loads(in_string)
         except Exception as e:
-            logging.error(f"Failed to connect to Splunk service: {e}")
-            return {"payload": {"error": "Failed to connect to Splunk service"}, "status": 500}
+            logging.error(f"Malformed input: {e}")
+            return {'payload': {'error': 'Malformed input, must be valid JSON.'}, 'status': 400}
+        self.system_session_key = inbound_payload.get('system_authtoken')
+        if not self.system_session_key:
+            logging.error("No session key provided")
+            return {'payload': {'error': 'No session key provided'}, 'status': 401}
+        self.user_name = (inbound_payload.get('session') or {}).get('user')
+        self.apply_log_level()
         try:
-            posted_data = json.loads(inbound_payload['payload'])
+            posted_data = json.loads(inbound_payload.get('payload', '{}'))
+        except Exception as e:
+            logging.error(f"Malformed payload: {e}")
+            return {'payload': {'error': 'Malformed payload, must be valid JSON.'}, 'status': 400}
+        try:
             sample_data = posted_data.get('text')
             description = posted_data.get('description', None)
             selected_fields = posted_data.get('selected_fields', None)
@@ -369,12 +386,9 @@ class AiDetection(PersistentServerConnectionApplication):
                     results['combined_regex'] = combined_regex
                     results['selected_fields'] = selected_fields
             return {'payload': results, 'status': 200}
-        except KeyError:
-            logging.error("Request payload must contain a 'text' field.")
-            return {'payload': {'error': "Request payload must contain a 'text' field."}, 'status': 400}
         except Exception as e:
             logging.error(f"Error during AI detection: {e}", exc_info=True)
-            return {'payload': {'error': str(e)}, 'status': 500}
+            return {'payload': {'error': 'Internal error during AI detection'}, 'status': 500}
 
     def handleStream(self, handle, in_string):
         """

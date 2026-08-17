@@ -14,37 +14,30 @@
 
 import os
 import sys
-import re
 import logging
-from os.path import dirname
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Union
 import hashlib
-import importlib
 
 
 # Ensure the app's lib directory is at the front of sys.path
 lib_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'lib'))
 bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-# sys.path.insert(0, "/opt/splunk/etc/apps/Splunk_SA_Scientific_Python_linux_x86_64/bin/linux_x86_64/4_2_3/lib/python3.9/lib-dynload")
+# Native/binary deps (regex, numpy) are installed by ucc-gen into
+# lib/3rdparty/<platform> from globalConfig os-dependentLibraries, NOT lib/.
+# UCC's generated import_declare_test.py is meant to add this but has a
+# "39" == "3.9" version-string bug, so add it explicitly here.
+thirdparty_path = os.path.join(lib_path, '3rdparty', 'linux_lib_py39')
 
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
 if bin_path not in sys.path:
-    sys.path.insert(0, bin_path) 
+    sys.path.insert(0, bin_path)
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'lib','3rdparty','linux_lib_py39')))
+if os.path.isdir(thirdparty_path) and thirdparty_path not in sys.path:
+    sys.path.insert(0, thirdparty_path)
 
-# print(sys.path)
-
-import logging
-from splunktaucclib.splunk_aoblib.setup_util import Setup_Util
 from solnlib import conf_manager
-from base64 import b64encode
-import splunk.entity
-import splunk.Intersplunk
-import splunklib.client as client
-import splunklib.results as results
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
 import json
@@ -52,9 +45,9 @@ import json
 # Import the abstracted PII detection logic
 from pii_detection_logic import PiiDetectionLogic
 
+# Level is set from the [logging] stanza per request, default INFO
 logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', 'cim-plicity.log'])
-logging.basicConfig(filename=logfile,level=logging.DEBUG)
-logging.info(sys.path)
+logging.basicConfig(filename=logfile,level=logging.INFO)
 
 ADDON_NAME = 'cim-plicity'
 
@@ -71,6 +64,15 @@ class PiiDetection(PersistentServerConnectionApplication):
         """Placeholder for future implementation."""
         pass
 
+    def apply_log_level(self):
+        """Honour the [logging] log_level setting (default INFO)."""
+        try:
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
+            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+        except Exception:
+            logging.getLogger().setLevel(logging.INFO)
+
     def get_detectors_list(self):
         cfm = conf_manager.ConfManager(
                 self.system_session_key,
@@ -78,7 +80,6 @@ class PiiDetection(PersistentServerConnectionApplication):
                 realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
         )
         account_conf_file = cfm.get_conf("cim-plicity_settings")
-        logging.info(f"Account conf file: {account_conf_file}")
         selected_detectors = account_conf_file.get("ai_configuration").get("pii_detectors").split('|') if account_conf_file.get("ai_configuration").get("pii_detectors") else []
         if not selected_detectors:
             selected_detectors = [
@@ -104,13 +105,17 @@ class PiiDetection(PersistentServerConnectionApplication):
         # Input validation
         try:
             inbound_payload = json.loads(in_string)
-            self.system_session_key = inbound_payload['system_authtoken']
         except Exception as e:
             logging.error(f"Malformed input: {e}")
             return {'payload': {'error': 'Malformed input, must be valid JSON.'}, 'status': 400}
         if not isinstance(inbound_payload, dict):
             logging.error("Input is not a dictionary.")
             return {'payload': {'error': 'Input must be a JSON object.'}, 'status': 400}
+        self.system_session_key = inbound_payload.get('system_authtoken')
+        if not self.system_session_key:
+            logging.error("No session key provided")
+            return {'payload': {'error': 'No session key provided'}, 'status': 401}
+        self.apply_log_level()
         logging.info(f"Payload keys: {list(inbound_payload.keys())}")
         # Mask PII in logs: only log text length and hash
         posted_data = None
@@ -132,9 +137,10 @@ class PiiDetection(PersistentServerConnectionApplication):
             selected_detectors = self.get_detectors_list()
             logging.info(f"Selected detectors: {selected_detectors}")
             
-            # Extract custom patterns from the request
+            # Extract custom patterns from the request (patterns themselves are
+            # user-supplied, so log only the count)
             custom_patterns = posted_data.get('custom_patterns', [])
-            logging.info(f"Custom patterns: {custom_patterns}")
+            logging.info(f"Custom patterns supplied: {len(custom_patterns)}")
             
             # Create PII detection logic instance with selected detectors and custom patterns
             pii_logic = PiiDetectionLogic(selected_detectors, custom_patterns)
@@ -155,4 +161,4 @@ class PiiDetection(PersistentServerConnectionApplication):
             
         except Exception as e:
             logging.error(f"Error during PII analysis: {e}", exc_info=True)
-            return {'payload': {'error': str(e)}, 'status': 500}
+            return {'payload': {'error': 'Internal error during PII detection'}, 'status': 500}

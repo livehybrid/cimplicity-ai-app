@@ -33,7 +33,18 @@ jobs:
           python-version: "3.9"
 
       - name: Install UCC Framework
-        run: pip install splunk-add-on-ucc-framework
+        # Version lives in build-requirements.txt so Dependabot bumps it (it
+        # never touches run: lines). ucc-gen 6.x has an unguarded os.remove()
+        # in its lib-purge (numpy's RECORD lists bin/f2py scripts pip never
+        # creates under --target; transitive numpy via scrubadub -> the whole
+        # build dies with FileNotFoundError; confirmed through 6.5.3, and the
+        # reason this repo sat pinned on 5.69.1 until 2026-07-30) —
+        # scripts/patch_ucc_purge.py guards it post-install. The script exits
+        # loudly if upstream changes, so a future bump re-evaluates the patch.
+        # Upstream: https://github.com/splunk/addonfactory-ucc-generator/issues/2081
+        run: |
+          pip install -r build-requirements.txt
+          python scripts/patch_ucc_purge.py
 
       - name: Determine Version
         id: version
@@ -43,7 +54,17 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG_VERSION=${GITHUB_REF#refs/tags/v}
           else
-            TAG_VERSION="1.0.0"
+            # Branch builds: derive from the latest v* tag so artefacts never
+            # regress below the last release (match v* skips the stray 1.0.0 tag).
+            # v1.0.4-3-gabc1234 -> 1.0.4-3-gabc1234; no tag -> 0.0.0-g<hash>
+            # checkout@v5 is shallow by default; describe needs tags + ancestry
+            git fetch --unshallow --tags 2>/dev/null || git fetch --tags 2>/dev/null || true
+            DESCRIBE=$(git describe --tags --match "v*" --always 2>/dev/null || echo "")
+            if [[ "$DESCRIBE" == v* ]]; then
+              TAG_VERSION="${DESCRIBE#v}"
+            else
+              TAG_VERSION="0.0.0-g${SHORT_COMMIT_HASH}"
+            fi
           fi
           VERSION_WITH_HASH="${TAG_VERSION}+${SHORT_COMMIT_HASH}"
           echo "VERSION_WITH_HASH=${VERSION_WITH_HASH}" >> $GITHUB_OUTPUT
@@ -52,11 +73,23 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
+      - name: Run Python tests
+        run: |
+          pip install pytest
+          python3 -m pytest tests/ -q
+
       - name: Generate UCC components
         run: |
           # Generate UCC framework components
           ucc-gen build --source ucc-app -o build/
-          
+
+          # ucc-gen swallows build exceptions and exits 0, so a crash mid-build
+          # leaves a partial tree (no default/); fail fast rather than package it
+          if [ ! -f "build/cim-plicity/default/app.conf" ]; then
+            echo "Error: ucc-gen build incomplete (default/app.conf missing)"
+            exit 1
+          fi
+
           # Copy generated files to React app structure
           mkdir -p packages/cim-plicity/src/main/resources/splunk/
           cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
@@ -82,17 +115,31 @@ jobs:
             sed -i "s/id = .*/id = cim-plicity/g" default/app.conf
           fi
           
-          # Add reload trigger for splunk_create.conf if missing
-          if [ -f "default/app.conf" ] && [ -f "default/splunk_create.conf" ]; then
+          # MCP tools: every shipped custom conf needs a [triggers] reload entry
+          # (AppInspect check_reload_trigger_for_all_custom_confs). For tools.conf we
+          # use http_post so Splunk fires the app's autoregister endpoint on every
+          # app-state change: on Splunk Enterprise the handler upserts the MCP tools
+          # into the Splunk MCP Server's KV; on Splunk Cloud it no-ops (the native
+          # synced-apps registrar registers from tools.conf itself). http_post (not
+          # access_endpoints, which would call an unimplemented _reload(); not plain
+          # simple, which never registers) is the pattern proven on Splunk Enterprise
+          # by ucc-app-builder. The URL omits /services, matching Splunk's own
+          # [triggers] convention. ucc-gen emits its own [triggers] stanza (e.g.
+          # reload.cim-plicity_settings), so ensure EACH entry exists rather than
+          # skipping when [triggers] is merely present.
+          if [ -f "default/app.conf" ] && [ -f "default/tools.conf" ]; then
+            RELOAD_TOOLS='reload.tools = http_post /cim-plicity/autoregister'
             if ! grep -q "\[triggers\]" default/app.conf; then
               echo "" >> default/app.conf
               echo "[triggers]" >> default/app.conf
-              echo "reload.splunk_create = simple" >> default/app.conf
-            elif ! grep -q "reload.splunk_create" default/app.conf; then
-              sed -i '/^\[triggers\]/a reload.splunk_create = simple' default/app.conf
+              echo "$RELOAD_TOOLS" >> default/app.conf
+            elif ! grep -q "^reload\.tools" default/app.conf; then
+              sed -i "/^\[triggers\]/a $RELOAD_TOOLS" default/app.conf
+            fi
+            if ! grep -q "^reload\.cim-plicity_settings" default/app.conf; then
+              sed -i '/^\[triggers\]/a reload.cim-plicity_settings = simple' default/app.conf
             fi
           fi
-          
 
 
       - name: Generate Package tarball
@@ -108,9 +155,15 @@ jobs:
             # Remove all .pyc files and __pycache__ directories recursively
             find temp-package/cim-plicity -name "*.pyc" -type f -delete || true
             find temp-package/cim-plicity -name "__pycache__" -type d -exec rm -rf {} + || true
-            rm -rf temp-package/cim-plicity/lib/**/*.so || true
-            rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/f2cmap/.f2py_f2cmap || true
-            rm -rf temp-package/cim-plicity/lib/3rdparty/linux_lib_py39/numpy/f2py/tests/src/assumed_shape/.f2py_f2cmap || true
+            # Strip hidden files/dirs (AppInspect rejects them, e.g. numpy's
+            # .f2py_f2cmap, .pytest_cache, .DS_Store); no shipped hidden file is needed
+            find temp-package/cim-plicity -name ".*" -not -name "." -exec rm -rf {} + || true
+            # bin/ must ship no compiled binaries or test files
+            find temp-package/cim-plicity/bin -name "*.so" -type f -delete || true
+            find temp-package/cim-plicity/bin -name "test_*.py" -type f -delete || true
+            # Normalise permissions before packaging (AppInspect: 755 dirs, 644 files)
+            find temp-package/cim-plicity -type d -exec chmod 755 {} + || true
+            find temp-package/cim-plicity -type f -exec chmod 644 {} + || true
             mkdir -p dist
             # Create tarball with proper directory structure (avoids ./ prefixes and naming issues)
             cd temp-package
@@ -159,4 +212,5 @@ jobs:
       contents: write
     needs:
       - appinspect
-    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main 
+      - quality-appinspect-api
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main

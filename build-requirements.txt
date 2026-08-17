@@ -1,0 +1,4 @@
+# Build tooling. Lives in a requirements file (not a workflow run: line) so
+# Dependabot's pip ecosystem sees and bumps it. After installing, run
+# scripts/patch_ucc_purge.py (workaround for the 6.x lib-purge crash).
+splunk-add-on-ucc-framework==6.5.3

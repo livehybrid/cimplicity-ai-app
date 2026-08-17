@@ -8,6 +8,16 @@ Welcome to the CiMplicity Splunk App documentation! This directory contains all 
 - **[Quick Start Guide](QUICK_START.md)** - Get up and running in minutes
 - **[Build Guide](BUILD_GUIDE.md)** - Comprehensive build and development documentation
 
+### Product
+- **[Product Brief](PRODUCT_BRIEF.md)** - What the app does and its MVP feature set
+- **[Problem Solved](PROBLEM_SOLVED.md)** - The onboarding pain points the app addresses
+
+### API Reference
+- **[AI Detection Endpoint](AI_DETECTION_ENDPOINT.md)** - AI-assisted field extraction REST endpoint
+- **[PII Detection Endpoint](PII_DETECTION_ENDPOINT.md)** - PII scanning REST endpoint
+- **[CIM Mapping Endpoint](CIM_MAPPING_ENDPOINT.md)** - AI-assisted CIM mapping REST endpoint (dynamic CIM model loading)
+- **[MCP Tools](MCP_TOOLS.md)** - Splunk MCP Server tool registration and per-tool contracts
+
 ### For Developers
 - **Quick Start**: For immediate development setup
 - **Build Guide**: Deep dive into build processes, CI/CD, and troubleshooting
@@ -43,7 +53,7 @@ pip install splunk-add-on-ucc-framework
 yarn run setup
 
 # Generate UCC components
-ucc-gen --source ucc-app -o build/
+ucc-gen build --source ucc-app -o build/
 cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
 
 # Build for production
@@ -70,10 +80,12 @@ After building, you'll find:
 
 Every code push triggers our automated pipeline:
 
-1. **Build** → Compiles and packages the Splunk app
-2. **Test** → Runs unit tests and code quality checks  
-3. **AppInspect** → Validates against Splunk standards
+1. **Python tests** → Runs `pytest tests/`
+2. **Build** → Compiles and packages the Splunk app (UCC generation, Webpack, `ucc-gen package`)
+3. **AppInspect** → Validates against Splunk standards (CLI + API)
 4. **Release** → Publishes releases for version tags
+
+Jest unit tests and ESLint are local-only (`yarn run test`, `yarn run lint`); run them before pushing.
 
 ## 🆘 Getting Help
 
@@ -95,9 +107,4 @@ Every code push triggers our automated pipeline:
 
 ---
 
-📋 **Start here**: [`QUICK_START.md`](QUICK_START.md) | 📖 **Detailed docs**: [`BUILD_GUIDE.md`](BUILD_GUIDE.md) 
-
-## Setup Instructions
-1. Install the app in Splunk.
-2. Configure OpenRouter API key in settings.
-3. Upload sample data and follow wizard.
+📋 **Start here**: [`QUICK_START.md`](QUICK_START.md) | 📖 **Detailed docs**: [`BUILD_GUIDE.md`](BUILD_GUIDE.md)

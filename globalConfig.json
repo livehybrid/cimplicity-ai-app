@@ -39,18 +39,25 @@
                             ]
                         },
                         {
-                            "type": "text",
+                            "type": "singleSelect",
                             "label": "Model",
                             "field": "model",
-                            "help": "Model name",
+                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list.",
                             "required": true,
-                            "encrypted": false,
+                            "options": {
+                                "endpointUrl": "cim-plicity/ai_model_choices",
+                                "labelField": "label",
+                                "createSearchChoice": true,
+                                "dependencies": [
+                                    "api_endpoint"
+                                ]
+                            },
                             "validators": [
                                 {
                                     "type": "string",
-                                    "errorMsg": "Length of API key should be between 1 and 50",
+                                    "errorMsg": "Length of model ID should be between 1 and 100",
                                     "minLength": 1,
-                                    "maxLength": 50
+                                    "maxLength": 100
                                 }
                             ]
                         },
@@ -146,21 +153,15 @@
             ],
             "title": "Configuration",
             "description": "Set up your add-on"
-        },
-        "dashboard": {
-            "panels": [
-                {
-                    "name": "default"
-                }
-            ]
         }
     },
     "meta": {
         "name": "cim-plicity",
         "restRoot": "cim-plicity",
-        "version": "0.0.0+0a19330",
+        "navColor": "#1e1633",
+        "version": "1.0.4+d01b087",
         "displayName": "CIMPlicity AI",
-        "schemaVersion": "0.0.9",
+        "schemaVersion": "0.0.10",
         "supportedThemes": [
             "light",
             "dark"

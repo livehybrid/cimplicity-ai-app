@@ -23,7 +23,7 @@ This package provides the main React UI for the CIMplicity AI Splunk App, enabli
 
 ## Usage
 - Follow the wizard: Data Input → Field Extraction → CIM Mapping → PII Detection → Config Generation
-- See the [main README](../../../../README.md) for full documentation, privacy notes, and workflow details.
+- See the [main README](../../README.md) for full documentation, privacy notes, and workflow details.
 
 ## Privacy & LLM Usage
 - Your data and any provided description will be sent to the configured LLM service for analysis.
@@ -39,4 +39,5 @@ This package provides the main React UI for the CIMplicity AI Splunk App, enabli
 - AI field extraction, regex editing, and live preview added
 - PII detection grouped by type, unique values, and ignore-list for non-PII types
 - Config generation for props.conf, transforms.conf, SPL2
-- All changes now tracked in this README for future reference
+
+For release history see the [CHANGELOG](CHANGELOG.md) and the [GitHub releases](https://github.com/livehybrid/cimplicity-ai-app/releases).
