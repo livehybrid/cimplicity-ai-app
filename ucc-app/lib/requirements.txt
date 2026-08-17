@@ -11,5 +11,5 @@ solnlib==8.1.0
 # with python.required and build the lib with a cp39 toolchain.
 scrubadub==2.0.1
 nltk==3.8.1
-scipy==1.13.1
+scipy==1.18.0
 scikit-learn==1.6.1
