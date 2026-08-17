@@ -1,5 +1,5 @@
 splunktaucclib==8.2.0
-splunk-sdk==2.1.1
+splunk-sdk==3.0.0
 solnlib==8.1.0
 # scrubadub 2.0.1 hard-depends on scikit-learn (-> scipy) and textblob (-> nltk).
 # Splunk 10.x runs persistent handlers on Python 3.9 by default (see restmap
