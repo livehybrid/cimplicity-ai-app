@@ -26,6 +26,9 @@ updates:
         versions: [">=1.7.0"]
       - dependency-name: "scipy"
         versions: [">=1.14.0"]
+      # nltk >=3.10 requires py3.10+.
+      - dependency-name: "nltk"
+        versions: [">=3.10.0"]
   - package-ecosystem: "github-actions"
     target-branch: "develop"
     directory: "/"
