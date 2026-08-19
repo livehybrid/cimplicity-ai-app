@@ -10,6 +10,6 @@ solnlib==8.1.0
 # surfacing as persistconn "bad character in reply size". Keep this in lockstep
 # with python.required and build the lib with a cp39 toolchain.
 scrubadub==2.0.1
-nltk==3.8.1
+nltk==3.9.4
 scipy==1.13.1
 scikit-learn==1.6.1
