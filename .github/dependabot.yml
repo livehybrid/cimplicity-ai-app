@@ -2,7 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     target-branch: "develop"
-    directories: 
+    directories:
       - "/"
       - "/ucc-app/lib/"
     schedule:
@@ -11,9 +11,23 @@ updates:
       splunk:
         applies-to: version-updates
         patterns:
-        - "splunk*"
+          - "splunk*"
+    open-pull-requests-limit: 10
+    ignore:
+      # Splunk Cloud runtime is py3.9: splunk-sdk 3.x is py3.13-only and
+      # requests >=2.33 drops py3.9. These majors are rejected on purpose;
+      # lift the caps only when the app moves off the py3.9 runtime.
+      - dependency-name: "splunk-sdk"
+        versions: [">=3.0.0"]
+      - dependency-name: "requests"
+        versions: [">=2.33.0"]
+      # scikit-learn >=1.7 needs py3.10+, scipy >=1.14 needs py3.10+.
+      - dependency-name: "scikit-learn"
+        versions: [">=1.7.0"]
+      - dependency-name: "scipy"
+        versions: [">=1.14.0"]
   - package-ecosystem: "github-actions"
     target-branch: "develop"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
