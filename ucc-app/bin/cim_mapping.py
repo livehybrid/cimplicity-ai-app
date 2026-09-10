@@ -39,6 +39,7 @@ if _bindir not in sys.path:
     sys.path.insert(0, _bindir)
 
 from solnlib import conf_manager
+import llm_response
 
 ADDON_NAME = 'cim-plicity'
 
@@ -160,18 +161,16 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             content = response.json()['choices'][0]['message']['content']
             logging.info(f"Received CIM mapping response ({len(content)} chars)")
             
-            # The prompt asks for a direct JSON array, but models can sometimes wrap it.
-            # We will try to parse it directly, and if that fails, look for a key.
-            try:
-                suggestions = json.loads(content)
-                if isinstance(suggestions, dict) and len(suggestions) == 1:
-                    # If it's a dict with one key, assume the array is the value.
-                    return list(suggestions.values())[0]
-                return suggestions
-            except (json.JSONDecodeError, TypeError):
-                 logging.error("Failed to decode the direct response from the AI service")
-                 logging.debug(f"Undecodable content: {content}")
-                 return {"error": "Failed to parse LLM response"}
+            # The prompt asks for a direct JSON array, but models wrap it: in a
+            # markdown fence, under a single key (response_format=json_object
+            # forbids a top-level array), or behind a line of preamble. Parsing
+            # strictly here discarded correct mappings as unparseable.
+            suggestions = llm_response.parse_json_array(content)
+            if suggestions is None:
+                logging.error("Failed to decode the direct response from the AI service")
+                logging.debug(f"Undecodable content: {content}")
+                return {"error": "Failed to parse LLM response"}
+            return suggestions
 
         except requests.exceptions.Timeout:
             logging.error("Request to OpenRouter timed out.")

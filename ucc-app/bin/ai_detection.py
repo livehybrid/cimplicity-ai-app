@@ -26,6 +26,7 @@ sys.path = new_paths
 
 import logging
 from solnlib import conf_manager
+import llm_response
 import requests
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
@@ -141,8 +142,15 @@ class AiDetection(PersistentServerConnectionApplication):
             )
             response.raise_for_status()
             content = response.json()['choices'][0]['message']['content']
-            logging.info(f"Received successful response from OpenRouter ({len(content)} chars).")
-            return json.loads(content)
+            logging.info(
+                "Received successful response from OpenRouter (%d chars)."
+                % (len(content) if isinstance(content, str) else 0)
+            )
+            # Models wrap the object in a markdown fence or a line of preamble
+            # even when asked not to, and a refused or truncated completion
+            # arrives as null content. Returning None here puts the caller on
+            # the local fallback rather than raising.
+            return llm_response.parse_json(content)
         except requests.exceptions.Timeout:
             logging.error("Request to OpenRouter timed out.")
             return None
