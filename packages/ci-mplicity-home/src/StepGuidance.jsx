@@ -124,7 +124,10 @@ const DataInputGuide = () => (
             </li>
             <li>
                 <strong>From Splunk:</strong> pick an index, then a sourcetype (those seen in
-                the last 24 hours), then Fetch Sample pulls the most recent matching event.
+                the last 24 hours), then Fetch Events lists recent matching events to choose
+                from. Pick one that is representative: a sourcetype often mixes formats, and
+                seeding the workflow from an unusual event produces extractions that fit
+                nothing. Refresh events re-runs the search for a newer set.
             </li>
         </GuideList>
         <AiLegend />
