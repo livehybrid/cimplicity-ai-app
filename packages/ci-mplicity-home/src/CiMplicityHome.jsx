@@ -9,6 +9,8 @@ import ComboBox from '@splunk/react-ui/ComboBox';
 import TextArea from '@splunk/react-ui/TextArea';
 import File from '@splunk/react-ui/File';
 import Message from '@splunk/react-ui/Message';
+import Table from '@splunk/react-ui/Table';
+import Paginator from '@splunk/react-ui/Paginator';
 import ToastMessages from '@splunk/react-toast-notifications/ToastMessages';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
@@ -39,6 +41,18 @@ const INITIAL_TIME_SETTINGS = {
 
 // Escape backslashes and double quotes so user-supplied values cannot break SPL quoting
 const escapeSplValue = (value) => String(value || '').replace(/[\\"]/g, '\\$&');
+
+// Sample picker sizing. A single search fetches EVENTS_PER_PAGE * MAX_EVENT_PAGES
+// events and paging happens client-side, so moving between pages is instant and
+// costs no extra search. Keep the product bounded: the whole point is to give the
+// user a representative choice, not to page through the whole index.
+const EVENTS_PER_PAGE = 20;
+const MAX_EVENT_PAGES = 10;
+const MAX_SAMPLE_EVENTS = EVENTS_PER_PAGE * MAX_EVENT_PAGES;
+
+// Row preview length. Long enough to tell one shape of event from another
+// (which is the reason the picker exists) without wrapping the table.
+const EVENT_PREVIEW_CHARS = 220;
 
 const STEPS = {
     dataInput: {
@@ -145,6 +159,24 @@ const StyledSection = styled.div`
 
 const StyledPanel = styled.div``;
 
+// Events are compared by shape here, so a monospace cell with preserved spacing
+// is what makes an odd event stand out from the standard one.
+const StyledEventPreview = styled.span`
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre;
+    word-break: break-all;
+`;
+
+const StyledPickerToolbar = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+`;
+
 const MainGrid = styled.div`
     display: grid;
     /* Help sidebar grows with the viewport (up to 460px) but never below the
@@ -237,6 +269,12 @@ const DataInputStep = ({ onDataSubmit }) => {
     const [splunkSourcetype, setSplunkSourcetype] = useState('');
     const [splunkError, setSplunkError] = useState('');
     const [splunkLoading, setSplunkLoading] = useState(false);
+    // Candidate events for the picker, plus the field metadata the search
+    // returned. Field metadata is per-search, the row is per-selection.
+    const [sampleEvents, setSampleEvents] = useState([]);
+    const [sampleFieldsMeta, setSampleFieldsMeta] = useState([]);
+    const [eventPage, setEventPage] = useState(1);
+    const [selectedEventIndex, setSelectedEventIndex] = useState(null);
     const [indexes, setIndexes] = useState([]);
     const [sourcetypes, setSourcetypes] = useState([]);
     const [indexesLoading, setIndexesLoading] = useState(false);
@@ -363,15 +401,46 @@ const DataInputStep = ({ onDataSubmit }) => {
         }
     };
 
+    // Build the "already extracted by Splunk" field list for one chosen event.
+    // Previously this only ever ran against results[0]; it now takes the row the
+    // user actually picked, so the sample values shown downstream belong to that
+    // event rather than to whichever event happened to sort first.
+    const buildExistingFields = (fieldsMeta, row) => {
+        if (!fieldsMeta || !row) {
+            return [];
+        }
+        const ignored = ['punct', 'linecount', 'timeendpos', 'timestartpos', 'splunk_server', 'splunk_server_group'];
+        return fieldsMeta
+            .filter((field) => !field.name.startsWith('_')
+                && !field.name.startsWith('date_')
+                && !ignored.includes(field.name))
+            .map((field) => {
+                const sampleValue = row[field.name] || 'N/A';
+                return {
+                    name: field.name,
+                    type: inferFieldType(sampleValue),
+                    value: String(sampleValue),
+                    confidence: 1.0,
+                    source: 'splunk_existing',
+                };
+            });
+    };
+
+    // Fetch a page-able set of candidate events rather than a single arbitrary
+    // one. A sourcetype is frequently not homogeneous (a web index can hold the
+    // standard combined format alongside events that do not follow it), so
+    // `| head 1` gave the user whatever sorted first with no way to refuse it.
     const handleSplunkFetch = () => {
         setSplunkLoading(true);
         setSplunkError('');
+        setSelectedEventIndex(null);
+        setEventPage(1);
         if (fetchSubscription.current) {
             fetchSubscription.current.unsubscribe();
         }
         const searchJob = SearchJob.create(
             {
-                search: `search index="${escapeSplValue(splunkIndex)}" sourcetype="${escapeSplValue(splunkSourcetype)}" | head 1`,
+                search: `search index="${escapeSplValue(splunkIndex)}" sourcetype="${escapeSplValue(splunkSourcetype)}" | head ${MAX_SAMPLE_EVENTS}`,
                 earliest_time: '-24h',
                 latest_time: 'now',
                 adhoc_search_level: 'verbose',
@@ -382,49 +451,42 @@ const DataInputStep = ({ onDataSubmit }) => {
             }
         );
 
-        fetchSubscription.current = searchJob.getResults().subscribe(
+        fetchSubscription.current = searchJob.getResults({ count: MAX_SAMPLE_EVENTS }).subscribe(
             (data) => {
-                if (data && data.results && data.results.length > 0) {
-                    const raw = data.results[0]._raw;
-
-                    // Extract existing fields from the search response
-                    const existingFields = [];
-                    if (data.fields) {
-                        data.fields.forEach(field => {
-                            // Filter out internal fields (starting with _), system fields, and date_* fields
-                            if (!field.name.startsWith('_') &&
-                                !field.name.startsWith('date_') &&
-                                !['punct', 'linecount', 'timeendpos', 'timestartpos', 'splunk_server', 'splunk_server_group'].includes(field.name)) {
-
-                                // Get sample value from the first result
-                                const sampleValue = data.results[0][field.name] || 'N/A';
-
-                                existingFields.push({
-                                    name: field.name,
-                                    type: inferFieldType(sampleValue),
-                                    value: String(sampleValue),
-                                    confidence: 1.0,
-                                    source: 'splunk_existing'
-                                });
-                            }
-                        });
-                    }
-
-                    // Pass existing fields to the data submit handler
-                    onDataSubmit(raw, `splunk:${splunkIndex}:${splunkSourcetype}`, existingFields);
-                } else {
-                     onDataSubmit('// No results found', 'splunk');
+                const results = (data && data.results) || [];
+                // Events with no _raw cannot be used as a sample downstream.
+                const usable = results.filter((row) => row && row._raw);
+                setSampleFieldsMeta((data && data.fields) || []);
+                setSampleEvents(usable);
+                if (usable.length === 0) {
+                    setSampleEvents([]);
+                    setSplunkError('No events found for that index and sourcetype in the last 24 hours.');
                 }
                 setSplunkLoading(false);
             },
             (err) => {
                 console.error('Failed to fetch sample data', err);
                 setSplunkError(err.message);
+                setSampleEvents([]);
                 setSplunkLoading(false);
             },
             () => {
                 setSplunkLoading(false);
             }
+        );
+    };
+
+    // Committing a chosen event is what feeds the rest of the workflow.
+    const handleEventSelect = (index) => {
+        const row = sampleEvents[index];
+        if (!row) {
+            return;
+        }
+        setSelectedEventIndex(index);
+        onDataSubmit(
+            row._raw,
+            `splunk:${splunkIndex}:${splunkSourcetype}`,
+            buildExistingFields(sampleFieldsMeta, row)
         );
     };
     
@@ -523,7 +585,7 @@ const DataInputStep = ({ onDataSubmit }) => {
                                     disabled={!splunkSourcetype || splunkLoading}
                                     icon={splunkLoading ? <WaitSpinner size="small" /> : null}
                                 >
-                                    {splunkLoading ? 'Fetching...' : 'Fetch Sample'}
+                                    {splunkLoading ? 'Fetching...' : 'Fetch Events'}
                                 </Button>
                             </StyledInputGroup>
                             {indexesError && (
@@ -542,6 +604,76 @@ const DataInputStep = ({ onDataSubmit }) => {
                                 </Paragraph>
                             )}
                             {splunkError && <Message type="error">{splunkError}</Message>}
+                            {sampleEvents.length > 0 && (
+                                <StyledSection>
+                                    <Paragraph style={{ opacity: 0.8 }}>
+                                        {`Showing ${sampleEvents.length} event${sampleEvents.length === 1 ? '' : 's'} from the last 24 hours. `}
+                                        Pick the one that best represents the data you want to onboard.
+                                    </Paragraph>
+                                    <Table stripeRows>
+                                        <Table.Head>
+                                            <Table.HeadCell width={90}>Time</Table.HeadCell>
+                                            <Table.HeadCell>Event</Table.HeadCell>
+                                            <Table.HeadCell width={110} />
+                                        </Table.Head>
+                                        <Table.Body>
+                                            {sampleEvents
+                                                .slice((eventPage - 1) * EVENTS_PER_PAGE, eventPage * EVENTS_PER_PAGE)
+                                                .map((row, offset) => {
+                                                    const index = (eventPage - 1) * EVENTS_PER_PAGE + offset;
+                                                    const isSelected = selectedEventIndex === index;
+                                                    const raw = String(row._raw);
+                                                    return (
+                                                        <Table.Row
+                                                            key={row._cd || `${index}-${raw.slice(0, 32)}`}
+                                                            onClick={() => handleEventSelect(index)}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
+                                                            <Table.Cell>
+                                                                <StyledEventPreview>
+                                                                    {String(row._time || '').replace('T', ' ').slice(0, 19)}
+                                                                </StyledEventPreview>
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                <StyledEventPreview>
+                                                                    {raw.length > EVENT_PREVIEW_CHARS
+                                                                        ? `${raw.slice(0, EVENT_PREVIEW_CHARS)}…`
+                                                                        : raw}
+                                                                </StyledEventPreview>
+                                                            </Table.Cell>
+                                                            <Table.Cell>
+                                                                <Button
+                                                                    appearance={isSelected ? 'primary' : 'default'}
+                                                                    onClick={() => handleEventSelect(index)}
+                                                                >
+                                                                    {isSelected ? 'Selected' : 'Use this'}
+                                                                </Button>
+                                                            </Table.Cell>
+                                                        </Table.Row>
+                                                    );
+                                                })}
+                                        </Table.Body>
+                                    </Table>
+                                    <StyledPickerToolbar>
+                                        <Paginator
+                                            onChange={(e, { page }) => setEventPage(page)}
+                                            current={eventPage}
+                                            alwaysShowLastPageLink
+                                            totalPages={Math.min(
+                                                MAX_EVENT_PAGES,
+                                                Math.max(1, Math.ceil(sampleEvents.length / EVENTS_PER_PAGE))
+                                            )}
+                                        />
+                                        <Button
+                                            onClick={handleSplunkFetch}
+                                            disabled={splunkLoading}
+                                            icon={splunkLoading ? <WaitSpinner size="small" /> : null}
+                                        >
+                                            {splunkLoading ? 'Refreshing...' : 'Refresh events'}
+                                        </Button>
+                                    </StyledPickerToolbar>
+                                </StyledSection>
+                            )}
                         </StyledPanel>
                     </TabLayout.Panel>
                 </TabLayout>
