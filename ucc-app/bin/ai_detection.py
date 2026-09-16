@@ -26,6 +26,7 @@ sys.path = new_paths
 
 import logging
 from solnlib import conf_manager
+import ai_settings
 import llm_response
 import requests
 
@@ -43,19 +44,22 @@ class AiDetection(PersistentServerConnectionApplication):
     def __init__(self, _command_line, _command_arg):
         super(PersistentServerConnectionApplication, self).__init__()
 
+    def _read_ai_configuration(self):
+        cfm = conf_manager.ConfManager(
+            self.system_session_key,
+            ADDON_NAME,
+            realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
+        )
+        return cfm.get_conf("cim-plicity_settings").get("ai_configuration") or {}
+
     def get_ai_settings(self):
-        """Return the ai_configuration stanza as a dict ({} on failure)."""
-        try:
-            cfm = conf_manager.ConfManager(
-                self.system_session_key,
-                ADDON_NAME,
-                realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-cim-plicity_settings",
-            )
-            account_conf_file = cfm.get_conf("cim-plicity_settings")
-            return account_conf_file.get("ai_configuration") or {}
-        except Exception as e:
-            logging.error(f"Could not read ai_configuration settings: {e}", exc_info=True)
-            return {}
+        """Return the ai_configuration stanza, retrying a transient empty read.
+
+        The api_key is an encrypted field; on a Splunk Cloud SHC a call served by
+        a lagging member reads it back empty, so a single read is not reliable
+        (see lib/ai_settings.py).
+        """
+        return ai_settings.read_ai_configuration(self._read_ai_configuration)
 
     def apply_log_level(self):
         """Honour the [logging] log_level setting (default INFO)."""
