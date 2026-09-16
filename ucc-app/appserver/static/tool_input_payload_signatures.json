@@ -1,0 +1,187 @@
+[
+  {
+    "_key": "cim-plicity:cim_plicity_ping",
+    "tool_id": "cim-plicity:cim_plicity_ping",
+    "name": "cim_plicity_ping",
+    "title": "cim_plicity_ping",
+    "description": "Health check for CIMPlicity AI. Returns { ok, app, tools }. Call first to verify connectivity before other tools.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "_meta": {
+      "tags": [
+        "cim-plicity"
+      ],
+      "execution": {
+        "type": "api",
+        "method": "GET",
+        "endpoint": "/services/cim-plicity/ping"
+      },
+      "external_app_id": "cim-plicity",
+      "name_prefix": "cim_plicity",
+      "required_app": "cim-plicity"
+    }
+  },
+  {
+    "_key": "cim-plicity:ai_detection",
+    "tool_id": "cim-plicity:ai_detection",
+    "name": "ai_detection",
+    "title": "ai_detection",
+    "description": "Suggest Splunk field extractions for a raw log sample: props.conf-ready PCRE regexes with named capture groups, a suggested sourcetype and timestamp settings (time_format, time_prefix, max_timestamp_lookahead). Uses the app-configured AI provider with a local regex fallback. Returns { sourcetype, fields:[{name, regex}], combined_regex, time_format, time_prefix, max_timestamp_lookahead, source }.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Raw sample event/lines to analyse."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional context about the data."
+        },
+        "selected_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional field names; when given, a combined_regex covering exactly these fields is built."
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "_meta": {
+      "tags": [
+        "cim-plicity"
+      ],
+      "execution": {
+        "type": "api",
+        "method": "POST",
+        "endpoint": "/services/ai_detection",
+        "body": {
+          "text": "$text$",
+          "description": "$description$",
+          "selected_fields": "$selected_fields$"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "external_app_id": "cim-plicity",
+      "name_prefix": "cim_plicity",
+      "required_app": "cim-plicity"
+    }
+  },
+  {
+    "_key": "cim-plicity:pii_detection",
+    "tool_id": "cim-plicity:pii_detection",
+    "name": "pii_detection",
+    "title": "pii_detection",
+    "description": "Detect PII in a raw log sample using scrubadub detectors (configured on the app's Configuration page) plus optional caller-supplied regex patterns. Returns { pii_results:[{type, text, score, start, end, field, examples, regex_pattern}], suggestion }.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Raw sample to scan for PII."
+        },
+        "custom_patterns": {
+          "type": "array",
+          "description": "Optional extra patterns: [{name, regex}] (matched case-insensitively).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "regex": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "_meta": {
+      "tags": [
+        "cim-plicity"
+      ],
+      "execution": {
+        "type": "api",
+        "method": "POST",
+        "endpoint": "/services/pii_detection",
+        "body": {
+          "text": "$text$",
+          "custom_patterns": "$custom_patterns$"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "external_app_id": "cim-plicity",
+      "name_prefix": "cim_plicity",
+      "required_app": "cim-plicity"
+    }
+  },
+  {
+    "_key": "cim-plicity:cim_mapping",
+    "tool_id": "cim-plicity:cim_mapping",
+    "name": "cim_mapping",
+    "title": "cim_mapping",
+    "description": "Map extracted log fields onto a Splunk CIM data model with AI, returning per-field confidence and reasoning. cimModel is a lowercase_underscore model key (e.g. authentication, network_traffic, web; loaded dynamically from Splunk_SA_CIM when installed). Returns [{field, cimField, confidence, reasoning}] or {error}. Requires the app's AI api_key to be configured.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "extractedFields": {
+          "type": "array",
+          "description": "Extracted fields, e.g. [{name, sample}]; sample values improve mapping quality.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "sample": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "cimModel": {
+          "type": "string",
+          "description": "CIM model key, lowercase with underscores, e.g. authentication, network_traffic, web."
+        }
+      },
+      "required": [
+        "extractedFields",
+        "cimModel"
+      ]
+    },
+    "_meta": {
+      "tags": [
+        "cim-plicity"
+      ],
+      "execution": {
+        "type": "api",
+        "method": "POST",
+        "endpoint": "/services/cim_mapping",
+        "body": {
+          "extractedFields": "$extractedFields$",
+          "cimModel": "$cimModel$"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "external_app_id": "cim-plicity",
+      "name_prefix": "cim_plicity",
+      "required_app": "cim-plicity"
+    }
+  }
+]
