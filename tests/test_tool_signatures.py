@@ -1,11 +1,11 @@
 """Static validation of CIMPlicity's MCP tool registration.
 
-Unlike the Data Dictionary app there is no shipped
-`tool_input_payload_signatures.json` here: the signatures live inline in the
-`TOOLS` table in `ucc-app/bin/autoregister.py`, next to the code that ships
-them. These tests parse that table and assert the invariants the Splunk MCP
-Server enforces at load and exec time, so a rebuild cannot silently reintroduce
-a regression.
+The `TOOLS` table in `ucc-app/bin/autoregister.py` is the single source of
+truth. Enterprise registers from it directly; Cloud reads the same data from the
+generated `appserver/static/tool_input_payload_signatures.json` (see
+`test_tool_signatures_file.py` for the file's lockstep with `TOOLS`). These
+tests parse the table and assert the invariants the Splunk MCP Server enforces
+at load and exec time, so a rebuild cannot silently reintroduce a regression.
 
 The regression this exists to prevent (2026-07-31, commit d01b087):
 
