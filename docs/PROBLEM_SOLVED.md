@@ -29,7 +29,7 @@ Onboarding new data sources into Splunk is a critical but often complex and time
 - **App-Based:** CIMplicity AI is installed as a Splunk app (compatible with Splunk Enterprise and Cloud).
 - **Modern UI:** The frontend is built entirely with [Splunk ReactUI](https://splunkui.splunk.com/Packages/react-ui/Overview), ensuring a native, accessible, and responsive user experience.
 - **Step-by-Step Workflow:** Users are guided through data input, field extraction, CIM mapping, PII detection, and configuration generation.
-- **Backend Integration:** Python scripts handle field extraction, PII detection (using [scrubadub](https://github.com/datasnakes/scrubadub)), and AI-assisted mapping using external or local LLM services (configurable).
+- **Backend Integration:** Python scripts handle field extraction, PII detection (using [scrubadub](https://github.com/LeapBeyond/scrubadub)), and AI-assisted mapping using external or local LLM services (configurable).
 - **Config Output:** Generates ready-to-use Splunk configuration (props.conf) and SPL2 for Ingest/Edge Processors.
 - **Direct Copy/Download:** Users can copy or download config snippets for immediate use in their Splunk environment.
 
@@ -50,4 +50,4 @@ Onboarding new data sources into Splunk is a critical but often complex and time
 
 ## Summary
 
-CIMplicity AI transforms Splunk data onboarding from a manual, error-prone process into a fast, guided, and secure workflow. By combining automation, AI, and a modern Splunk ReactUI interface, it empowers users to get value from their data faster—while reducing risk and complexity. 
+CIMplicity AI transforms Splunk data onboarding from a manual, error-prone process into a fast, guided, and secure workflow. By combining automation, AI, and a modern Splunk ReactUI interface, it empowers users to get value from their data faster while reducing risk and complexity. 

@@ -5,10 +5,10 @@
 ```bash
 # Prerequisites: Node.js 18+, Yarn, Python 3.9+
 git clone <repository-url>
-cd splunk-app
+cd cimplicity-ai-app
 pip install splunk-add-on-ucc-framework
 yarn run setup
-ucc-gen --source ucc-app -o build/
+ucc-gen build --source ucc-app -o build/
 cp -R build/cim-plicity/* packages/cim-plicity/src/main/resources/splunk/
 yarn run build
 ```
@@ -21,7 +21,7 @@ Your Splunk app will be ready in: `packages/cim-plicity/stage/`
 |---------|-------------|
 | `pip install splunk-add-on-ucc-framework` | 🔧 Install UCC framework |
 | `yarn run setup` | 🚀 First time setup |
-| `ucc-gen --source ucc-app -o build/` | ⚙️ Generate UCC components |
+| `ucc-gen build --source ucc-app -o build/` | ⚙️ Generate UCC components |
 | `cp -R build/cim-plicity/* packages/...` | 📋 Copy UCC files |
 | `yarn run build` | 📦 Build production app |
 | `yarn run start` | 💻 Start dev servers |
@@ -31,10 +31,11 @@ Your Splunk app will be ready in: `packages/cim-plicity/stage/`
 ## Project Layout
 
 ```
-splunk-app/
+cimplicity-ai-app/
 ├── packages/
 │   ├── ci-mplicity-home/   # React UI components
 │   └── cim-plicity/        # Splunk app (builds to stage/)
+├── ucc-app/                # UCC (Universal Configuration Console) source
 └── .github/workflows/      # CI/CD automation
 ```
 
@@ -68,11 +69,13 @@ yarn run start  # Auto-reloads on file changes
 ## CI/CD Pipeline
 
 Every push triggers:
-1. **UCC Generation** → Creates credential management components
-2. **Build** → Creates Splunk app package
-3. **Test** → Runs unit tests + ESLint
+1. **Python tests** → Runs `pytest tests/`
+2. **UCC Generation** → Creates credential management components
+3. **Build** → Creates Splunk app package
 4. **AppInspect** → Splunk validation (CLI + API)
 5. **Release** → Publishes to GitHub (on version tags)
+
+Jest unit tests and ESLint are local-only today (`yarn run test`, `yarn run lint`); run them before pushing.
 
 ## Version Tags
 

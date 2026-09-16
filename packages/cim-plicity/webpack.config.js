@@ -29,5 +29,6 @@ module.exports = webpackMerge(baseConfig, {
             ],
         }),
     ],
-    devtool: 'eval-source-map',
+    // eval-source-map ships eval() into the packaged bundle; dev only
+    devtool: process.env.NODE_ENV === 'production' ? false : 'eval-source-map',
 });

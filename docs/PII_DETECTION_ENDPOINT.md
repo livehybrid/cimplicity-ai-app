@@ -2,42 +2,44 @@
 
 ## Overview
 
-The PII (Personally Identifiable Information) Detection endpoint provides an automated way to analyze text data for sensitive information using the [scrubadub](https://github.com/datasnakes/scrubadub) library and custom detectors. It is implemented as a Splunk persistent REST handler in the `pii_detection.py` script and is designed to be called by Splunk or external clients to identify and help mask PII before indexing or further processing.
+The PII (Personally Identifiable Information) Detection endpoint provides an automated way to analyze text data for sensitive information using the [scrubadub](https://github.com/LeapBeyond/scrubadub) library and custom detectors. It is implemented as a Splunk persistent REST handler in the `pii_detection.py` script and is designed to be called by Splunk or external clients to identify and help mask PII before indexing or further processing.
 
 ---
 
 ## Endpoint Details
 
-- **Script Location:** `splunk-app/ucc-app/bin/pii_detection.py`
-- **REST Path:** `/pii_detection`
+- **Script Location:** `ucc-app/bin/pii_detection.py`
+- **REST URL (splunkd):** `https://<splunkd>:8089/services/pii_detection` (also `https://<splunkd>:8089/servicesNS/-/cim-plicity/pii_detection`, since the `[script:pii_detection]` stanza in `restmap.conf` declares `match = /pii_detection`, so the path is app-relative, not `/services/<stanza name>`)
+- **Splunk Web proxy:** the UI calls it via `createRESTURL('/servicesNS/-/cim-plicity/pii_detection')`, exposed through the `[expose:pii_detection]` stanza in `web.conf`
 - **Method:** `POST`
-- **Handler:** `application.PiiDetection`
+- **Handler:** `pii_detection.PiiDetection`
 - **Authentication:** Requires Splunk session authentication (see Splunk REST handler docs)
 
 ---
 
 ## Request Structure
 
-The endpoint expects a JSON payload with the following structure:
+Callers POST a raw JSON body with `Content-Type: application/json` (splunkd delivers it to the persistent handler as the JSON-encoded `payload` string):
 
 ```
 {
-  "payload": "{\"text\": \"<text to analyze>\"}"
+  "text": "<text to analyze>",
+  "custom_patterns": [
+    { "name": "employee_id", "regex": "\\bEMP\\d{6}\\b" }
+  ]
 }
 ```
 
-- The `payload` field is a JSON-encoded string containing a `text` field with the data to be analyzed for PII.
-- The outer request may include additional Splunk context fields, but only `payload` is required for PII detection.
+- `text` (required): the data to be analyzed for PII.
+- `custom_patterns` (optional): array of `{name, regex}` objects. Each regex is matched case-insensitively across the text; matches are reported with `type` set to the upper-cased pattern name and the redaction replacement uses the pattern name (e.g. `[REDACTED_EMPLOYEE_ID]`). Invalid regexes are skipped.
 
 ### Example Request
 
 ```
-POST /pii_detection
-Content-Type: application/json
-
-{
-  "payload": "{\"text\": \"John Doe's email is john.doe@example.com and his SSN is 123-45-6789.\"}"
-}
+curl -k -u admin:changeme \
+  -H "Content-Type: application/json" \
+  -d '{"text": "John Doe'\''s email is john.doe@example.com and his SSN is 123-45-6789.", "custom_patterns": [{"name": "employee_id", "regex": "\\bEMP\\d{6}\\b"}]}' \
+  https://localhost:8089/services/pii_detection
 ```
 
 ---
@@ -54,8 +56,8 @@ The endpoint returns a JSON object with the following structure:
         "type": "EmailDetector",
         "text": "john.doe@example.com",
         "score": 1.0,
-        "start": 21,
-        "end": 41,
+        "start": 20,
+        "end": 40,
         "field": "email",
         "regex_pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
       },
@@ -63,8 +65,8 @@ The endpoint returns a JSON object with the following structure:
         "type": "en_US.SocialSecurityNumberDetector",
         "text": "123-45-6789",
         "score": 1.0,
-        "start": 59,
-        "end": 70,
+        "start": 56,
+        "end": 67,
         "field": "ssn",
         "regex_pattern": "\\b\\d{3}[-.]?\\d{2}[-.]?\\d{4}\\b"
       }
@@ -79,7 +81,7 @@ The endpoint returns a JSON object with the following structure:
 - `payload.pii_results`: List of detected PII entities, each with:
   - `type`: The PII entity type (scrubadub detector name, e.g., EmailDetector, en_US.SocialSecurityNumberDetector, IpAddressDetector, etc.)
   - `text`: The exact text detected as PII
-  - `score`: Confidence score (always 1.0 for scrubadub detectors)
+  - `score`: Confidence score (1.0 for scrubadub detectors, 0.9 for custom-pattern matches)
   - `start`, `end`: Character offsets in the input text
   - `field`: Inferred field name (if possible)
   - `regex_pattern`: Regex pattern for Splunk SEDCMD masking (PCRE2 syntax)
@@ -87,6 +89,13 @@ The endpoint returns a JSON object with the following structure:
 - `status`: HTTP-like status code (200 for success, 400/500 for errors)
 
 ### Error Responses
+- If no session key is provided:
+  ```
+  {
+    "payload": {"error": "No session key provided"},
+    "status": 401
+  }
+  ```
 - If the request is malformed or missing required fields:
   ```
   {
@@ -106,8 +115,8 @@ The endpoint returns a JSON object with the following structure:
 
 ## Configuration & Environment
 
-- **PII Detection Engine:** [scrubadub](https://github.com/datasnakes/scrubadub) with custom detectors and patterns.
-- **Custom Patterns:** You can provide custom regex patterns for PII detection. The redaction replacement string will use the custom pattern name (e.g., `[REDACTED_EMPLOYEE_ID]`).
+- **PII Detection Engine:** [scrubadub](https://github.com/LeapBeyond/scrubadub) with custom detectors and patterns.
+- **Custom Patterns:** You can provide custom regex patterns for PII detection via the `custom_patterns` request field. The redaction replacement string will use the custom pattern name (e.g., `[REDACTED_EMPLOYEE_ID]`).
 - **Logging:** Logs are written to `$SPLUNK_HOME/var/log/splunk/cim-plicity.log`. PII is never logged directly; only text length and a hash are recorded for privacy.
 - **Detectors:** The set of enabled detectors can be configured in `cim-plicity_settings.conf`.
 
@@ -133,6 +142,6 @@ The endpoint returns a JSON object with the following structure:
 ---
 
 ## References
-- [scrubadub Documentation](https://datasnakes.github.io/scrubadub/)
+- [scrubadub Documentation](https://scrubadub.readthedocs.io/)
 - [Splunk REST Handler Documentation](https://dev.splunk.com/enterprise/docs/developapps/customresthandlers/)
 - [Splunk SEDCMD Documentation](https://docs.splunk.com/Documentation/Splunk/latest/SearchReference/SED) 

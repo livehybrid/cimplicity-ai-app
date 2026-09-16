@@ -37,7 +37,7 @@
         "releaseNotes": {
             "name": "README",
             "text": "README.txt",
-            "uri": ""
+            "uri": null
         }
     },
     "dependencies": null,

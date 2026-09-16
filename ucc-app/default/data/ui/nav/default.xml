@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<nav>
+<nav color="#1e1633">
     <view name="main" default="true"/>
     <view name="configuration"/>
     <view name="search"/>

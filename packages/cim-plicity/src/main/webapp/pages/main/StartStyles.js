@@ -10,10 +10,4 @@ const StyledContainer = styled.div`
     color: ${variables.textColor};
 `;
 
-const StyledGreeting = styled.div`
-    font-weight: bold;
-    color: ${variables.infoColor};
-    font-size: ${variables.fontSizeXXLarge};
-`;
-
-export { StyledContainer, StyledGreeting };
+export { StyledContainer };
