@@ -1,6 +1,6 @@
 {
   "name": "@splunk/ci-mplicity",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "private": true,
   "scripts": {
     "build": "lerna run build",

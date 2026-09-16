@@ -14,3 +14,11 @@ build
 packages/cim-plicity/stage
 packages/cim-plicity/stage-old/
 *.tar.gz
+ucc-app/bin/__pycache__/
+ucc-app/bin/.pytest_cache/
+ucc-app/lib/__pycache__/
+tests/__pycache__/
+.pytest_cache/
+package-lock.json
+temp-package/
+dist-deploy/

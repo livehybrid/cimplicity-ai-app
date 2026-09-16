@@ -1,23 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import Card from '@splunk/react-ui/Card';
 import Button from '@splunk/react-ui/Button';
 import Select from '@splunk/react-ui/Select';
 import Switch from '@splunk/react-ui/Switch';
-import Typography from '@splunk/react-ui/Typography';
+import Heading from '@splunk/react-ui/Heading';
+import P from '@splunk/react-ui/Paragraph';
+import List from '@splunk/react-ui/List';
+import Message from '@splunk/react-ui/Message';
+import WaitSpinner from '@splunk/react-ui/WaitSpinner';
+import StarSparklesDouble from '@splunk/react-icons/StarSparklesDouble';
+import AiBadge from './AiBadge';
+import { suggestCimMapping } from './utils/api';
 // Box and Layout components don't exist in Splunk React UI
 // Using styled-components instead
 import Table from '@splunk/react-ui/Table';
-import Message from '@splunk/react-ui/Message';
 import Chip from '@splunk/react-ui/Chip';
 import styled from 'styled-components';
+import { variables } from '@splunk/themes';
 import { 
     generateAutoMappings, 
     calculateMappingQuality, 
     getQualityScoreConfig 
 } from './constants/mappingConstants';
 
-const CIM_MODELS = [
+export const CIM_MODELS = [
     {
         id: 'authentication',
         label: 'Authentication',
@@ -97,9 +104,9 @@ const StyledQualityScore = styled.div`
     gap: 12px;
     margin-bottom: 16px;
     padding: 12px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid ${variables.borderColor};
     border-radius: 4px;
-    background: ${({ theme }) => theme.backgroundColor};
+    background: ${variables.backgroundColor};
 `;
 
 const StyledQualityBadge = styled.div`
@@ -108,7 +115,7 @@ const StyledQualityBadge = styled.div`
     gap: 8px;
     padding: 6px 12px;
     border-radius: 16px;
-    background: ${props => props.color};
+    background: ${(props) => (variables[props.$colorToken] || variables.severityColorNormal)(props)};
     color: white;
     font-weight: 500;
     font-size: 14px;
@@ -117,9 +124,9 @@ const StyledQualityBadge = styled.div`
 const StyledAutoMappingSection = styled.div`
     margin-bottom: 24px;
     padding: 16px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid ${variables.borderColor};
     border-radius: 4px;
-    background: ${({ theme }) => theme.backgroundColorPage};
+    background: ${variables.backgroundColorPage};
 `;
 
 const StyledBox = styled.div`
@@ -145,20 +152,48 @@ const CIMMapping = ({
     initialModel = '',
     initialMappings = {}
 }) => {
-    console.log('🗺️ CIMMapping received extractedFields:', extractedFields);
-    console.log('🗺️ CIMMapping field count:', extractedFields.length);
-    console.log('🗺️ CIMMapping field names:', extractedFields.map(f => f.name));
-    
     const [selectedModel, setSelectedModel] = useState(initialModel);
     const [mappingMode, setMappingMode] = useState('cim'); // 'cim' or 'extracted'
     const [fieldMappings, setFieldMappings] = useState(initialMappings);
     const [autoSuggestions, setAutoSuggestions] = useState({});
     const [showAutoSuggestions, setShowAutoSuggestions] = useState(false);
+    // {cimField: {source: 'ai', confidence, reasoning}} — entries absent here
+    // are local name-match suggestions
+    const [suggestionMeta, setSuggestionMeta] = useState({});
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState(null);
+    const [autoPicked, setAutoPicked] = useState(null);
     const lastModel = useRef(selectedModel);
     const lastFields = useRef(extractedFields);
 
+    // Score every model by how many of its CIM fields auto-match the extracted
+    // fields; used to pre-select the likeliest model and annotate the picker.
+    const modelMatchCounts = useMemo(() => {
+        const counts = {};
+        CIM_MODELS.forEach((model) => {
+            counts[model.id] = Object.keys(generateAutoMappings(extractedFields, model.fields)).length;
+        });
+        return counts;
+    }, [extractedFields]);
+
     useEffect(() => {
-        console.log('useEffect triggered - selectedModel:', selectedModel, 'mappingMode:', mappingMode);
+        if (!selectedModel && extractedFields && extractedFields.length > 0) {
+            let best = null;
+            CIM_MODELS.forEach((model) => {
+                if (modelMatchCounts[model.id] > 0 && (!best || modelMatchCounts[model.id] > modelMatchCounts[best.id])) {
+                    best = model;
+                }
+            });
+            if (best) {
+                setSelectedModel(best.id);
+                setAutoPicked({ id: best.id, label: best.label, count: modelMatchCounts[best.id] });
+            }
+        }
+        // Run once on entry: auto-pick only before the user has chosen anything
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
         if (selectedModel && (lastModel.current !== selectedModel || lastFields.current !== extractedFields)) {
             initializeFieldMappings();
             generateAutoSuggestions();
@@ -173,12 +208,14 @@ const CIMMapping = ({
 
     }, [selectedModel, extractedFields, mappingMode, initialModel]);
 
-    const initializeFieldMappings = () => {
+    // Accepts an explicit mode so callers that change the mode in the same tick
+    // (e.g. handleModeToggle) do not seed mappings from the stale state value.
+    const initializeFieldMappings = (mode = mappingMode) => {
         const model = CIM_MODELS.find(m => m.id === selectedModel);
         if (!model) return;
 
         const newMappings = {};
-        if (mappingMode === 'cim') {
+        if (mode === 'cim') {
             model.fields.forEach(field => {
                 newMappings[field] = '';
             });
@@ -188,7 +225,6 @@ const CIMMapping = ({
             });
         }
         setFieldMappings(newMappings);
-        console.log('Initializing mappings for mode:', mappingMode, 'with fields:', mappingMode === 'cim' ? model.fields.length : extractedFields.length);
     };
 
     const generateAutoSuggestions = () => {
@@ -197,7 +233,43 @@ const CIMMapping = ({
 
         const suggestions = generateAutoMappings(extractedFields, model.fields);
         setAutoSuggestions(suggestions);
+        setSuggestionMeta({});
         setShowAutoSuggestions(Object.keys(suggestions).length > 0);
+    };
+
+    const handleAskAi = () => {
+        if (!selectedModel) return;
+        setAiLoading(true);
+        setAiError(null);
+        suggestCimMapping(extractedFields, selectedModel)
+            .then((results) => {
+                const list = Array.isArray(results) ? results : [];
+                const valid = list.filter((s) => s && s.cimField && s.field);
+                if (valid.length > 0) {
+                    setAutoSuggestions((prev) => {
+                        const merged = { ...prev };
+                        valid.forEach((s) => { merged[s.cimField] = s.field; });
+                        return merged;
+                    });
+                    setSuggestionMeta((prev) => {
+                        const merged = { ...prev };
+                        valid.forEach((s) => {
+                            merged[s.cimField] = { source: 'ai', confidence: s.confidence, reasoning: s.reasoning };
+                        });
+                        return merged;
+                    });
+                    setShowAutoSuggestions(true);
+                } else if (Array.isArray(results)) {
+                    setAiError('The AI returned no mapping suggestions for this model.');
+                } else {
+                    setAiError((results && results.error) || 'AI returned an unexpected response.');
+                }
+                setAiLoading(false);
+            })
+            .catch((err) => {
+                setAiError((err && err.message) || 'Failed to reach the AI service. Check the AI Configuration page.');
+                setAiLoading(false);
+            });
     };
 
     const handleModelChange = (e, { value }) => {
@@ -205,12 +277,9 @@ const CIMMapping = ({
     };
 
     const handleModeToggle = () => {
-        setMappingMode(prev => {
-            const newMode = prev === 'cim' ? 'extracted' : 'cim';
-            console.log('Mapping mode changing to:', newMode);
-            initializeFieldMappings();
-            return newMode;
-        });
+        const newMode = mappingMode === 'cim' ? 'extracted' : 'cim';
+        setMappingMode(newMode);
+        initializeFieldMappings(newMode);
     };
 
     const handleFieldMapping = (sourceField, targetField) => {
@@ -271,9 +340,7 @@ const CIMMapping = ({
 
     const getSourceFields = () => {
         const model = CIM_MODELS.find(m => m.id === selectedModel);
-        const result = mappingMode === 'cim' ? (model ? model.fields : []) : extractedFields.map(f => f.name);
-        console.log('Getting source fields for mode:', mappingMode, 'count:', result.length);
-        return result;
+        return mappingMode === 'cim' ? (model ? model.fields : []) : extractedFields.map(f => f.name);
     };
 
     const calculateQualityScore = () => {
@@ -294,12 +361,12 @@ const CIMMapping = ({
 
         return (
             <StyledAutoMappingSection>
-                <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
-                    🤖 Automatic Mapping Suggestions
-                </Typography>
-                <Typography as="p" variant="body" style={{ marginBottom: 16, opacity: 0.8 }}>
+                <Heading level={4} style={{ marginBottom: 8 }}>
+                    Automatic Mapping Suggestions
+                </Heading>
+                <P style={{ marginBottom: 16, opacity: 0.8 }}>
                     We found potential matches between your extracted fields and CIM fields. Review and accept these suggestions to speed up your mapping process.
-                </Typography>
+                </P>
                 
                 <Table stripeRows style={{ marginBottom: 16 }}>
                     <Table.Head>
@@ -314,7 +381,18 @@ const CIMMapping = ({
                                 <Table.Cell>{cimField}</Table.Cell>
                                 <Table.Cell>{extractedField}</Table.Cell>
                                 <Table.Cell>
-                                    <Chip appearance="success">High</Chip>
+                                    {suggestionMeta[cimField] && suggestionMeta[cimField].source === 'ai' ? (
+                                        <span title={suggestionMeta[cimField].reasoning || undefined}>
+                                            <Chip appearance="success">
+                                                {typeof suggestionMeta[cimField].confidence === 'number'
+                                                    ? `${Math.round(suggestionMeta[cimField].confidence * 100)}%`
+                                                    : 'AI'}
+                                            </Chip>{' '}
+                                            <AiBadge compact />
+                                        </span>
+                                    ) : (
+                                        <Chip appearance="success">High</Chip>
+                                    )}
                                 </Table.Cell>
                                 <Table.Cell>
                                     <Button
@@ -353,14 +431,20 @@ const CIMMapping = ({
             <Card.Header title="CIM Field Mapping" />
             <Card.Body>
                 <StyledBox marginBottom={20}>
-                    <Typography as="h3" variant="title3" style={{ marginBottom: 4 }}>How to use CIM Field Mapping</Typography>
-                    <Typography as="p" variant="body" style={{ opacity: 0.8 }}>
-                        1. <strong>Select a CIM model</strong> to map your extracted fields to Splunk's Common Information Model.<br/>
-                        2. After selecting a model, choose your preferred mapping mode using the toggle:<br/>
-                        • CIM → Extracted: Map each CIM field to an extracted field (recommended)<br/>
-                        • Extracted → CIM: Map each extracted field to a CIM field<br/>
-                        3. Review automatic suggestions and accept them or manually configure mappings.
-                    </Typography>
+                    <Heading level={3} style={{ marginBottom: 4 }}>How to use CIM Field Mapping</Heading>
+                    <List ordered style={{ opacity: 0.8 }}>
+                        <List.Item>
+                            Select a CIM model to map your extracted fields to Splunk's Common Information Model.
+                        </List.Item>
+                        <List.Item>
+                            After selecting a model, choose your preferred mapping mode using the toggle:
+                            CIM to Extracted maps each CIM field to an extracted field (recommended);
+                            Extracted to CIM maps each extracted field to a CIM field.
+                        </List.Item>
+                        <List.Item>
+                            Review automatic suggestions and accept them or manually configure mappings.
+                        </List.Item>
+                    </List>
                 </StyledBox>
 
                 <StyledModelSelect>
@@ -372,15 +456,30 @@ const CIMMapping = ({
                         allowCreate={false}
                     >
                         {CIM_MODELS.map(model => (
-                            <Select.Option key={model.id} value={model.id} label={model.label}>
+                            <Select.Option
+                                key={model.id}
+                                value={model.id}
+                                label={
+                                    modelMatchCounts[model.id]
+                                        ? `${model.label} (${modelMatchCounts[model.id]} auto-matches)`
+                                        : model.label
+                                }
+                            >
                                 {model.label}
                             </Select.Option>
                         ))}
                     </Select>
+                    {autoPicked && selectedModel === autoPicked.id && (
+                        <Message appearance="fill" type="info" style={{ marginTop: 8 }}>
+                            Auto-selected {autoPicked.label}: {autoPicked.count} of your fields auto-match
+                            this model, the most of any CIM model. Change it if another model fits your
+                            data better.
+                        </Message>
+                    )}
                     {selectedModel && (
-                        <Typography as="p" variant="body" style={{ marginTop: 4, opacity: 0.8 }}>
+                        <P style={{ marginTop: 4, opacity: 0.8 }}>
                             {CIM_MODELS.find((m) => m.id === selectedModel)?.description}
-                        </Typography>
+                        </P>
                     )}
                 </StyledModelSelect>
 
@@ -391,18 +490,40 @@ const CIMMapping = ({
                             const { score, config } = getQualityScoreDisplay();
                             return (
                                 <StyledQualityScore>
-                                    <Typography as="span" variant="body" style={{ fontWeight: 500 }}>
+                                    <span style={{ fontWeight: 500 }}>
                                         Mapping Quality:
-                                    </Typography>
-                                    <StyledQualityBadge color={config.color}>
+                                    </span>
+                                    <StyledQualityBadge $colorToken={config.colorToken}>
                                         {score}% - {config.label}
                                     </StyledQualityBadge>
-                                    <Typography as="span" variant="body" style={{ opacity: 0.8 }}>
+                                    <span style={{ opacity: 0.8 }}>
                                         {config.description}
-                                    </Typography>
+                                    </span>
                                 </StyledQualityScore>
                             );
                         })()}
+
+                        {/* AI mapping suggestions - the one LLM-backed action on this page */}
+                        <StyledBox marginBottom={16}>
+                            <Button
+                                appearance="secondary"
+                                label={aiLoading ? 'Asking AI...' : 'Ask AI for mapping suggestions'}
+                                icon={aiLoading ? <WaitSpinner size="small" /> : <StarSparklesDouble />}
+                                onClick={handleAskAi}
+                                disabled={aiLoading || !extractedFields || extractedFields.length === 0}
+                            />{' '}
+                            <AiBadge />
+                            {aiError && (
+                                <Message
+                                    appearance="fill"
+                                    type="warning"
+                                    style={{ marginTop: 8 }}
+                                    onRequestRemove={() => setAiError(null)}
+                                >
+                                    {aiError}
+                                </Message>
+                            )}
+                        </StyledBox>
 
                         {/* Auto Suggestions Table */}
                         {renderAutoSuggestionsTable()}
@@ -427,7 +548,6 @@ const CIMMapping = ({
                             </Table.Head>
                             <Table.Body>
                                 {getSourceFields().map(field => {
-                                    console.log('Rendering row for source:', field);
                                     const mappedValue = fieldMappings[field] || '';
                                     const isMapped = mappedValue !== '';
                                     return (

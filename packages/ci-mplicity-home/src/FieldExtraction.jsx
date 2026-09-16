@@ -6,42 +6,57 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import Card from '@splunk/react-ui/Card';
 import Button from '@splunk/react-ui/Button';
+import ControlGroup from '@splunk/react-ui/ControlGroup';
+import Heading from '@splunk/react-ui/Heading';
+import Select from '@splunk/react-ui/Select';
 import TabLayout from '@splunk/react-ui/TabLayout';
 import Table from '@splunk/react-ui/Table';
 import Text from '@splunk/react-ui/Text';
 import Message from '@splunk/react-ui/Message';
 import TextArea from '@splunk/react-ui/TextArea';
 import Chip from '@splunk/react-ui/Chip';
-import Typography from '@splunk/react-ui/Typography';
 // Box and Layout components don't exist in Splunk React UI
 // Using styled-components instead
 import styled from 'styled-components';
-import Switch from '@splunk/react-ui/Switch';
+import { variables } from '@splunk/themes';
+import Toaster, { makeCreateToast } from '@splunk/react-toast-notifications/Toaster';
+import { TOAST_TYPES } from '@splunk/react-toast-notifications/ToastConstants';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import P from '@splunk/react-ui/Paragraph';
-// Remove useTheme import
-// For all inline styles that reference theme.*, move those styles into styled-components.
-// For example, create new styled components for:
-// - The TextArea in the AI tab (StyledTextArea)
-// - The preview container (StyledPreviewBox)
-// - The highlighted sample data container (StyledSampleDataBox)
-// Use theme.backgroundColorPage, theme.textColor, theme.borderColor, theme.backgroundColorSecondary, etc., in these styled-components.
-// Replace all inline style usages with these styled-components.
-// Do not use useTheme or theme in any inline style.
+import StarSparklesDouble from '@splunk/react-icons/StarSparklesDouble';
+import AiBadge from './AiBadge';
+
+const createToast = makeCreateToast(Toaster);
+
+// Convert Python-style named groups ((?P<name>...)) to the JS/PCRE form ((?<name>...))
+const pythonToJsNamedGroups = (pattern) => pattern.replace(/\(\?P</g, '(?<');
+
+// Theme-token palette so highlights stay readable in light and dark themes
+const HIGHLIGHT_COLOR_TOKENS = [
+    variables.syntaxBlue,
+    variables.syntaxRed,
+    variables.syntaxGreen,
+    variables.syntaxOrange,
+    variables.syntaxPurple,
+    variables.syntaxPink,
+    variables.syntaxTeal,
+    variables.interactiveColorPrimary,
+];
+const highlightColor = (props) =>
+    HIGHLIGHT_COLOR_TOKENS[(props.$colorIndex || 0) % HIGHLIGHT_COLOR_TOKENS.length](props);
 
 const StyledHighlight = styled.span`
-    background-color: ${props => props.color}20;
-    border: 1px solid ${props => props.color};
-    padding: 2px 4px;
+    border: 1px solid ${highlightColor};
+    padding: 1px 3px;
     border-radius: 3px;
     font-weight: 500;
     display: inline-block;
 `;
 
 const StyledPreview = styled.div`
-    background: ${({ theme }) => theme.backgroundColorPage};
-    border: 1px solid ${({ theme }) => theme.borderColor};
-    color: ${({ theme }) => theme.textColor};
+    background: ${variables.backgroundColorPage};
+    border: 1px solid ${variables.borderColor};
+    color: ${variables.textColor};
     border-radius: 4px;
     padding: 12px;
     margin-top: 8px;
@@ -49,6 +64,7 @@ const StyledPreview = styled.div`
     font-size: 13px;
     max-height: 200px;
     overflow: auto;
+    white-space: pre-wrap;
 `;
 
 const StyledBox = styled.div`
@@ -67,52 +83,46 @@ const StyledPanel = styled.div`
     flex: 1;
 `;
 
-const AiCard = styled(Card)`
-    margin-top: 20px;
-`;
-
-const ResultsHeader = styled.h3`
-    margin-top: 20px;
-    margin-bottom: 10px;
-`;
-
-const ErrorMessage = styled(P)`
-    color: red;
-`;
-
-const RegexCell = styled(Table.Cell)`
-    font-family: monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-all;
-`;
-
-// Add styled-components for theme-dependent elements
+// Styled-components for theme-dependent elements
 const StyledTextArea = styled(TextArea)`
     font-family: monospace;
     margin-bottom: 8px;
-    background-color: ${({ theme }) => theme.backgroundColorPage};
-    color: ${({ theme }) => theme.textColor};
-    border-color: ${({ theme }) => theme.borderColor};
 `;
 
 const StyledPreviewBox = styled.div`
     margin-top: 8px;
     padding: 8px;
-    background-color: ${({ theme }) => theme.backgroundColorSecondary};
+    background-color: ${variables.backgroundColorSection};
     border-radius: 4px;
-    border: 1px solid ${({ theme }) => theme.borderColor};
+    border: 1px solid ${variables.borderColor};
+`;
+
+const StyledPreviewPre = styled.pre`
+    font-size: 12px;
+    margin: 4px 0 0;
+    color: ${variables.textColor};
+    white-space: pre-wrap;
 `;
 
 const StyledSampleDataBox = styled.div`
     padding: 12px;
-    background-color: ${({ theme }) => theme.backgroundColorSecondary};
-    border: 1px solid ${({ theme }) => theme.borderColor};
+    background-color: ${variables.backgroundColorSection};
+    border: 1px solid ${variables.borderColor};
     border-radius: 4px;
     font-family: monospace;
     font-size: 13px;
     white-space: pre-wrap;
-    color: ${({ theme }) => theme.textColor};
+    color: ${variables.textColor};
+`;
+
+const StyledSuccessText = styled(P)`
+    color: ${variables.successColor};
+    font-weight: 500;
+`;
+
+const StyledExistingMarker = styled.span`
+    color: ${variables.interactiveColorPrimary};
+    font-weight: bold;
 `;
 
 /**
@@ -138,30 +148,13 @@ const FieldExtraction = ({
     onDetectFields,
     aiFieldResults,
     aiFieldLoading,
-    aiFieldError
+    aiFieldError,
+    onCombinedRegexChange = () => {}
 }) => {
-    console.log('🔧 FieldExtraction component rendered!');
-    console.log('🔧 Sample data length:', sampleData?.length || 0);
-    console.log('🔧 Existing fields received:', existingFields);
-    console.log('🔧 Existing fields count:', existingFields?.length || 0);
-    
     const [customRegex, setCustomRegex] = useState('');
     const [allFields, setAllFields] = useState(existingFields || []);
-    const [highlightedText, setHighlightedText] = useState(sampleData || '');
     const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [options, setOptions] = useState({
-        autoDetectTypes: true,
-        inferDataTypes: true,
-        extractTimestamp: true,
-        extractNested: true
-    });
     const [aiDescription, setAiDescription] = useState('');
-    const [selectedAiFields, setSelectedAiFields] = useState([]);
-    const [editedRegexes, setEditedRegexes] = useState({});
-    const [regexErrors, setRegexErrors] = useState({});
-    const [previewedField, setPreviewedField] = useState(null);
-    const [previewResults, setPreviewResults] = useState({});
     const [combinedRegexPreview, setCombinedRegexPreview] = useState(null);
 
     // Add new state for timestamp settings
@@ -171,35 +164,17 @@ const FieldExtraction = ({
         maxTimestampLookahead: '25'
     });
 
-    // Add state:
-    const [modifiedAiFields, setModifiedAiFields] = useState([]);
-
     // Initialize with existing fields from parent, but only once.
     useEffect(() => {
-        console.log('🔧 useEffect: existingFields changed:', existingFields);
         if (existingFields && existingFields.length > 0) {
-            console.log('🔧 Setting allFields to existingFields:', existingFields);
             setAllFields(existingFields);
         }
     }, [existingFields]);
 
     // Notify parent of field changes
     useEffect(() => {
-        console.log('🔧 useEffect: allFields changed, notifying parent:', allFields);
         onFieldsExtracted(allFields);
     }, [allFields]);
-
-    useEffect(() => {
-        setHighlightedText(sampleData || '');
-    }, [sampleData]);
-
-    // useEffect for aiFieldResults:
-    useEffect(() => {
-        if (aiFieldResults?.fields) {
-            setModifiedAiFields(aiFieldResults.fields);
-            setSelectedAiFields(aiFieldResults.fields.map(f => f.name));
-        }
-    }, [aiFieldResults]);
 
     // --- Extraction logic ---
     function inferFieldType(value) {
@@ -528,7 +503,7 @@ const FieldExtraction = ({
                 }
             } catch (e) {
                 // Fallback if not XML
-                console.log('XML parsing failed:', e.message);
+                console.warn('XML parsing failed:', e.message);
             }
         }
         
@@ -536,7 +511,6 @@ const FieldExtraction = ({
         const existingFields = allFields.filter(f => f.source !== 'auto_detect');
         const updatedFields = [...existingFields, ...newFields];
         setAllFields(updatedFields);
-        setHighlightedText(sampleData || '');
         onFieldsExtracted(updatedFields, extractionRegex, timeSettings);
     }
     function extractFieldsWithRegex() {
@@ -613,86 +587,67 @@ const FieldExtraction = ({
             const existingFields = allFields.filter(f => f.source !== 'custom_regex');
             const updatedFields = [...existingFields, ...newFields];
             setAllFields(updatedFields);
-            
-            // Highlight matches in the sample data
-            let highlighted = sampleData;
-            matches.sort((a, b) => (b.index || 0) - (a.index || 0)).forEach((match) => {
-                if (match.index !== undefined) {
-                    const matchText = match[0];
-                    const color = '#3B82F6';
-                    const replacement = `<span style=\"background-color: ${color}20; border: 1px solid ${color}; padding: 2px 4px; border-radius: 3px; font-weight: 500;\">${matchText}</span>`;
-                    highlighted = highlighted.slice(0, match.index) + replacement + highlighted.slice(match.index + matchText.length);
-                }
-            });
-            setHighlightedText(highlighted);
             onFieldsExtracted(updatedFields, customRegex);
         } catch (err) {
             setError('Invalid regex: ' + err.message);
         }
     }
 
-    const handleExistingFieldsFetch = () => {
-        if (!indexName) {
-            setError('Please enter an index name');
-            return;
-        }
-        setLoading(true);
-        setError('');
-        // Simulated API call
-        setTimeout(() => {
-            const fields = [
-                { name: 'timestamp', type: 'datetime', sampleValue: '2024-01-01T12:00:00Z' },
-                { name: 'level', type: 'string', sampleValue: 'INFO' },
-                { name: 'message', type: 'string', sampleValue: 'Sample message' },
-            ];
-            setAllFields(fields);
-            onFieldsExtracted(fields);
-            setLoading(false);
-        }, 1000);
-    };
+    // Find where existing Splunk field values occur in the sample data.
+    // Returns non-overlapping { start, end, title, colorIndex } ranges sorted by position.
+    const collectFieldMatchRanges = (text) => {
+        const ranges = [];
+        if (!text || !allFields.length) return ranges;
 
-    const handleOptionToggle = (option) => (e, { checked }) => {
-        setOptions(prev => ({ ...prev, [option]: checked }));
-    };
-
-    // Helper function to highlight existing field values in the sample data
-    const highlightExistingFields = (text) => {
-        if (!text || !allFields.length) return text;
-        
-        let highlightedText = text;
-        const existingFields = allFields.filter(f => f.source === 'splunk_existing');
-        
         // Sort fields by value length (longest first) to avoid partial matches
-        const sortedFields = existingFields
-            .filter(f => f.value && f.value !== 'N/A' && f.value.length > 2)
-            .sort((a, b) => b.value.length - a.value.length);
-        
-        sortedFields.forEach((field, index) => {
+        const sortedFields = allFields
+            .filter(f => f.source === 'splunk_existing' && f.value && f.value !== 'N/A' && String(f.value).length > 2)
+            .sort((a, b) => String(b.value).length - String(a.value).length);
+
+        sortedFields.forEach((field, fieldIndex) => {
             const value = String(field.value);
-            if (value && value !== 'N/A') {
-                // Create a unique color for each field
-                const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'];
-                const color = colors[index % colors.length];
-                
-                // Escape special regex characters in the value
-                const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                
-                try {
-                    const regex = new RegExp(`\\b${escapedValue}\\b`, 'gi');
-                    highlightedText = highlightedText.replace(regex, 
-                        `<span style="background-color: ${color}20; border: 1px solid ${color}; padding: 1px 3px; border-radius: 3px; font-weight: 500;" title="Field: ${field.name} (${field.type})">${value}</span>`
-                    );
-                } catch (e) {
-                    // If regex fails, try simple string replacement
-                    const simpleRegex = new RegExp(escapedValue, 'gi');
-                    highlightedText = highlightedText.replace(simpleRegex,
-                        `<span style="background-color: ${color}20; border: 1px solid ${color}; padding: 1px 3px; border-radius: 3px; font-weight: 500;" title="Field: ${field.name} (${field.type})">${value}</span>`
-                    );
+            // Escape special regex characters in the value
+            const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let regex;
+            try {
+                regex = new RegExp(`\\b${escapedValue}\\b`, 'gi');
+            } catch (e) {
+                regex = new RegExp(escapedValue, 'gi');
+            }
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                const start = match.index;
+                const end = start + match[0].length;
+                if (!ranges.some(r => start < r.end && end > r.start)) {
+                    ranges.push({ start, end, title: `Field: ${field.name} (${field.type})`, colorIndex: fieldIndex });
                 }
+                if (regex.lastIndex === match.index) regex.lastIndex++;
             }
         });
-        
-        return highlightedText;
+
+        return ranges.sort((a, b) => a.start - b.start);
+    };
+
+    // Render text with highlight ranges as React nodes (no raw HTML, so sample data cannot inject markup)
+    const renderHighlightedText = (text, ranges) => {
+        if (!ranges.length) return text;
+        const nodes = [];
+        let cursor = 0;
+        ranges.forEach((range, i) => {
+            if (range.start > cursor) {
+                nodes.push(text.slice(cursor, range.start));
+            }
+            nodes.push(
+                <StyledHighlight key={`highlight-${i}`} $colorIndex={range.colorIndex} title={range.title}>
+                    {text.slice(range.start, range.end)}
+                </StyledHighlight>
+            );
+            cursor = range.end;
+        });
+        if (cursor < text.length) {
+            nodes.push(text.slice(cursor));
+        }
+        return nodes;
     };
 
     const getConfidenceChip = (confidence) => {
@@ -716,147 +671,6 @@ const FieldExtraction = ({
 
     const hasData = sampleData && sampleData.trim().length > 0;
 
-    // Handler to start editing a regex
-    const handleEditRegex = (fieldName, currentRegex) => {
-        setEditedRegexes(prev => ({ ...prev, [fieldName]: currentRegex }));
-    };
-
-    // Handler for regex input change
-    const handleRegexChange = (fieldName, value) => {
-        setEditedRegexes(prev => ({ ...prev, [fieldName]: value }));
-        
-        // Enhanced regex validation
-        try {
-            // Check for common regex issues that can cause loops
-            if (value.includes('**') || value.includes('++') || value.includes('??')) {
-                throw new Error('Invalid quantifier combination');
-            }
-            
-            // Check for unescaped special characters that might cause issues
-            const unescapedChars = value.match(/(?<!\\)[.*+?^${}()|[\]\\]/g);
-            if (unescapedChars && unescapedChars.length > 0) {
-                // Warn about unescaped characters but don't block
-                console.warn('Unescaped special characters detected:', unescapedChars);
-            }
-            
-            // Test the regex with a timeout to prevent infinite loops
-            const testRegex = new RegExp(value);
-            
-            // Test with sample data if available
-            if (sampleData) {
-                const startTime = Date.now();
-                const testMatch = sampleData.match(testRegex);
-                const endTime = Date.now();
-                
-                // If regex takes too long, it might cause performance issues
-                if (endTime - startTime > 100) {
-                    console.warn('Regex might be slow, consider optimizing');
-                }
-            }
-            
-            setRegexErrors(prev => ({ ...prev, [fieldName]: null }));
-        } catch (e) {
-            setRegexErrors(prev => ({ ...prev, [fieldName]: e.message }));
-        }
-    };
-
-    // Handler to save edited regex
-    const handleSaveRegex = (fieldName) => {
-        // Already validated on change
-        setModifiedAiFields(prev => prev.map(f => 
-            f.name === fieldName ? { ...f, regex: editedRegexes[fieldName] } : f
-        ));
-        setEditedRegexes(prev => ({ ...prev, [fieldName]: undefined }));
-    };
-
-    // Handler to cancel editing
-    const handleCancelEdit = (fieldName) => {
-        setEditedRegexes(prev => ({ ...prev, [fieldName]: undefined }));
-        setRegexErrors(prev => ({ ...prev, [fieldName]: null }));
-    };
-
-    // Check if all regexes are valid
-    const allRegexesValid = modifiedAiFields && modifiedAiFields.every(f => {
-        const edit = editedRegexes[f.name];
-        if (edit !== undefined) {
-            return !regexErrors[f.name];
-        }
-        return true;
-    });
-
-    // When accepting, use edited regexes if present
-    const handleAcceptAiFields = (useCombinedRegex = false) => {
-        const fieldsToMap = selectedAiFields.length > 0 ? 
-            modifiedAiFields.filter(f => selectedAiFields.includes(f.name)) : 
-            modifiedAiFields;
-        const mappedFields = fieldsToMap.map(f => {
-            const regexToUse = editedRegexes[f.name] !== undefined ? editedRegexes[f.name] : f.regex;
-            let sampleValue = f.sampleValue || '';
-            if (!sampleValue && regexToUse && sampleData) {
-                try {
-                    const regex = new RegExp(regexToUse);
-                    const match = sampleData.match(regex);
-                    if (match && match.groups && match.groups[f.name]) {
-                        sampleValue = match.groups[f.name];
-                    } else if (match && match[1]) {
-                        sampleValue = match[1];
-                    }
-                } catch (e) {
-                    // If regex fails, keep empty string
-                }
-            }
-            return {
-                ...f,
-                regex: regexToUse,
-                value: sampleValue,
-            };
-        });
-        const existingFields = allFields.filter(f => f.source !== 'ai_detection');
-        const updatedFields = [...existingFields, ...mappedFields];
-        setAllFields(updatedFields);
-        const extractionRegex = useCombinedRegex && aiFieldResults.combined_regex ? 
-            aiFieldResults.combined_regex : null;
-        onFieldsExtracted(updatedFields, extractionRegex);
-        if (window.createToast) {
-            window.createToast({
-                type: 'success',
-                title: 'AI Fields Accepted',
-                message: 'AI-suggested fields have been applied.'
-            });
-        }
-    };
-
-    // Handler to preview extraction for a field
-    const handlePreviewRegex = (fieldName, regexPattern) => {
-        if (!regexPattern || !sampleData) {
-            setPreviewResults(prev => ({ ...prev, [fieldName]: { error: 'No regex or sample data.' } }));
-            setPreviewedField(fieldName);
-            return;
-        }
-        try {
-            let jsRegex = regexPattern.replace(/\(\?P</g, '\\(?<');
-            const regex = new RegExp(jsRegex, 'g');
-            const matches = [];
-            let match;
-            while ((match = regex.exec(sampleData)) !== null) {
-                if (match.groups && match.groups[fieldName]) {
-                    matches.push(match.groups[fieldName]);
-                } else if (match[1]) {
-                    matches.push(match[1]);
-                } else if (match[0]) {
-                    matches.push(match[0]);
-                }
-                // Prevent infinite loop for zero-width matches
-                if (regex.lastIndex === match.index) regex.lastIndex++;
-            }
-            setPreviewResults(prev => ({ ...prev, [fieldName]: { matches } }));
-            setPreviewedField(fieldName);
-        } catch (e) {
-            setPreviewResults(prev => ({ ...prev, [fieldName]: { error: e.message } }));
-            setPreviewedField(fieldName);
-        }
-    };
-
     // Handler to preview combined regex extraction
     const handlePreviewCombinedRegex = (combinedRegex) => {
         if (!combinedRegex || !sampleData) {
@@ -864,8 +678,7 @@ const FieldExtraction = ({
             return;
         }
         try {
-            let jsRegex = combinedRegex.replace(/\(\?P</g, '\\(?<');
-            const regex = new RegExp(jsRegex, 'g');
+            const regex = new RegExp(pythonToJsNamedGroups(combinedRegex), 'g');
             const matches = [];
             let match;
             while ((match = regex.exec(sampleData)) !== null) {
@@ -890,8 +703,7 @@ const FieldExtraction = ({
         // Extract fields from the combined regex
         const fields = [];
         try {
-            let jsRegex = aiFieldResults.combined_regex.replace(/\(\?P</g, '\\(?<');
-            const regex = new RegExp(jsRegex, 'g');
+            const regex = new RegExp(pythonToJsNamedGroups(aiFieldResults.combined_regex), 'g');
             const match = regex.exec(sampleData);
             
             if (match && match.groups) {
@@ -931,51 +743,44 @@ const FieldExtraction = ({
             maxTimestampLookahead: aiFieldResults.max_timestamp_lookahead || '25'
         });
 
-        if (window.createToast) {
-            window.createToast({
-                type: 'success',
-                title: 'AI Fields Accepted',
-                message: 'Combined regex and time settings have been applied.'
-            });
-        }
+        createToast({
+            type: TOAST_TYPES.SUCCESS,
+            title: 'AI Fields Accepted',
+            message: 'Combined regex and time settings have been applied.',
+            autoDismiss: true,
+        });
     };
 
-    // Helper to highlight fields in sample data
-    const highlightFieldsInSample = (sampleData, combinedRegex) => {
-        if (!sampleData || !combinedRegex) return sampleData;
-        
+    // Find the spans matched by the combined regex's named groups.
+    // Returns non-overlapping { start, end, title, colorIndex } ranges sorted by position.
+    const collectCombinedRegexRanges = (text, combinedRegex) => {
+        const ranges = [];
+        if (!text || !combinedRegex) return ranges;
+
         try {
-            let jsRegex = combinedRegex.replace(/\(\?P</g, '\\(?<');
-            const regex = new RegExp(jsRegex, 'g');
-            let highlightedText = sampleData;
-            let offset = 0;
-            
+            const regex = new RegExp(pythonToJsNamedGroups(combinedRegex), 'g');
             let match;
-            while ((match = regex.exec(sampleData)) !== null) {
+            while ((match = regex.exec(text)) !== null) {
                 if (match.groups) {
-                    Object.entries(match.groups).forEach(([fieldName, value]) => {
-                        if (value !== undefined) {
+                    Object.entries(match.groups).forEach(([fieldName, value], groupIndex) => {
+                        if (value !== undefined && value !== '') {
                             const start = match.index + match[0].indexOf(value);
                             const end = start + value.length;
-                            
-                            const before = highlightedText.substring(0, start + offset);
-                            const highlighted = `<span style="background-color: #4F46E5; color: white; padding: 1px 2px; border-radius: 2px; font-weight: bold;" title="${fieldName}">${value}</span>`;
-                            const after = highlightedText.substring(end + offset);
-                            
-                            highlightedText = before + highlighted + after;
-                            offset += highlighted.length - value.length;
+                            if (start >= match.index && !ranges.some(r => start < r.end && end > r.start)) {
+                                ranges.push({ start, end, title: fieldName, colorIndex: groupIndex });
+                            }
                         }
                     });
                 }
                 // Prevent infinite loop for zero-width matches
                 if (regex.lastIndex === match.index) regex.lastIndex++;
             }
-            
-            return highlightedText;
         } catch (e) {
             console.error('Error highlighting fields:', e);
-            return sampleData;
+            return [];
         }
+
+        return ranges.sort((a, b) => a.start - b.start);
     };
 
     // --- UI ---
@@ -983,34 +788,34 @@ const FieldExtraction = ({
         <Card style={{ width: '100%', marginTop: 24 }}>
             <Card.Header title="Field Extraction" />
             <Card.Body>
-                <Typography as="p" variant="body" style={{ marginBottom: 16 }}>
+                <P style={{ marginBottom: 16 }}>
                     Extract fields from your log data using patterns, regex, or AI assistance.
-                </Typography>
+                </P>
                 {(indexName || sourcetype) && (
-                    <Typography as="p" variant="smallBody" style={{ marginBottom: 8, opacity: 0.7 }}>
+                    <P style={{ marginBottom: 8, opacity: 0.7 }}>
                         {indexName && `Index: ${indexName} `}{sourcetype && `Sourcetype: ${sourcetype}`}
-                    </Typography>
+                    </P>
                 )}
                 <TabLayout defaultActivePanelId={showExistingTab ? "existing" : "auto"}>
                     {showExistingTab && (
                         <TabLayout.Panel label="Existing" panelId="existing">
                             <StyledBox marginBottom={16}>
-                                <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                                <Heading level={4} style={{ marginBottom: 8 }}>
                                     Fields Already Extracted by Splunk
-                                </Typography>
-                                <Typography as="p" variant="body" style={{ marginBottom: 12, opacity: 0.8 }}>
+                                </Heading>
+                                <P style={{ marginBottom: 12, opacity: 0.8 }}>
                                     These fields are already available in your Splunk search results and don't require additional extraction configuration.
                                     They are marked with an asterisk (*) in the extracted fields table below.
-                                </Typography>
+                                </P>
                                 {(indexName || sourcetype) && (
-                                    <Typography as="p" variant="smallBody" style={{ marginBottom: 8, opacity: 0.7 }}>
+                                    <P style={{ marginBottom: 8, opacity: 0.7 }}>
                                         {indexName && `Index: ${indexName} `}{sourcetype && `Sourcetype: ${sourcetype}`}
-                                    </Typography>
+                                    </P>
                                 )}
                                 {allFields.filter(f => f.source === 'splunk_existing').length > 0 && (
-                                    <Typography as="p" variant="body" style={{ color: '#2E7D32', fontWeight: 500 }}>
+                                    <StyledSuccessText>
                                         ✓ Found {allFields.filter(f => f.source === 'splunk_existing').length} existing field(s) from Splunk
-                                    </Typography>
+                                    </StyledSuccessText>
                                 )}
                             </StyledBox>
                         </TabLayout.Panel>
@@ -1018,93 +823,82 @@ const FieldExtraction = ({
                     <TabLayout.Panel label="Auto Detect" panelId="auto">
                         <Button appearance="primary" style={{ marginBottom: 12 }} onClick={extractFieldsAuto}>Auto Detect Fields</Button>
                         
-                        <Typography as="h4" style={{ marginTop: 16, marginBottom: 8 }}>Timestamp Settings</Typography>
-                        <Typography as="p" variant="smallBody" style={{ marginBottom: 12, opacity: 0.8 }}>
+                        <Heading level={4} style={{ marginTop: 16, marginBottom: 8 }}>Timestamp Settings</Heading>
+                        <P style={{ marginBottom: 12, opacity: 0.8 }}>
                             Configure timestamp extraction for your log format. These settings help Splunk parse timestamps correctly.
-                        </Typography>
-                        
-                        <div style={{ marginBottom: 12 }}>
-                            <Typography as="label" variant="body" style={{ display: 'block', marginBottom: 4 }}>
-                                {'TIME_PREFIX (e.g., ^, [, <)'}
-                            </Typography>
+                        </P>
+
+                        <ControlGroup label="TIME_PREFIX (e.g. ^, [, <)" labelPosition="top" style={{ marginBottom: 12 }}>
                             <Text
                                 value={timeSettings.timePrefix}
                                 onChange={(e, { value }) => setTimeSettings(prev => ({ ...prev, timePrefix: value }))}
                                 placeholder="Leave blank if no prefix"
-                                style={{ marginBottom: 8, width: '100%' }}
                             />
-                        </div>
-                        
-                        <div style={{ marginBottom: 12 }}>
-                            <Typography as="label" variant="body" style={{ display: 'block', marginBottom: 4 }}>
-                                TIME_FORMAT
-                            </Typography>
-                            <select
+                        </ControlGroup>
+
+                        <ControlGroup label="TIME_FORMAT" labelPosition="top" style={{ marginBottom: 12 }}>
+                            <Select
                                 value={timeSettings.timeFormat}
-                                onChange={(e) => setTimeSettings(prev => ({ ...prev, timeFormat: e.target.value }))}
-                                style={{ 
-                                    width: '100%', 
-                                    padding: '8px', 
-                                    border: '1px solid #ccc', 
-                                    borderRadius: '4px',
-                                    marginBottom: 8
-                                }}
+                                onChange={(e, { value }) => setTimeSettings(prev => ({ ...prev, timeFormat: value }))}
                             >
-                                <option value="CURRENT_TIME">CURRENT_TIME (No timestamp detected)</option>
-                                <option value="%Y-%m-%dT%H:%M:%S">%Y-%m-%dT%H:%M:%S (ISO 8601)</option>
-                                <option value="%b %d %H:%M:%S">%b %d %H:%M:%S (Syslog)</option>
-                                <option value="%d/%b/%Y:%H:%M:%S %z">%d/%b/%Y:%H:%M:%S %z (Apache)</option>
-                                <option value="%Y-%m-%d %H:%M:%S">%Y-%m-%d %H:%M:%S (Standard)</option>
-                                <option value="%m/%d/%Y %H:%M:%S">%m/%d/%Y %H:%M:%S (US Format)</option>
-                                <option value="%d-%m-%Y %H:%M:%S">%d-%m-%Y %H:%M:%S (EU Format)</option>
-                                <option value="%Y%m%d %H:%M:%S">%Y%m%d %H:%M:%S (Compact)</option>
-                            </select>
-                        </div>
-                        
-                        <div style={{ marginBottom: 12 }}>
-                            <Typography as="label" variant="body" style={{ display: 'block', marginBottom: 4 }}>
-                                MAX_TIMESTAMP_LOOKAHEAD (characters)
-                            </Typography>
+                                <Select.Option label="CURRENT_TIME (No timestamp detected)" value="CURRENT_TIME" />
+                                <Select.Option label="%Y-%m-%dT%H:%M:%S (ISO 8601)" value="%Y-%m-%dT%H:%M:%S" />
+                                <Select.Option label="%b %d %H:%M:%S (Syslog)" value="%b %d %H:%M:%S" />
+                                <Select.Option label="%d/%b/%Y:%H:%M:%S %z (Apache)" value="%d/%b/%Y:%H:%M:%S %z" />
+                                <Select.Option label="%Y-%m-%d %H:%M:%S (Standard)" value="%Y-%m-%d %H:%M:%S" />
+                                <Select.Option label="%m/%d/%Y %H:%M:%S (US Format)" value="%m/%d/%Y %H:%M:%S" />
+                                <Select.Option label="%d-%m-%Y %H:%M:%S (EU Format)" value="%d-%m-%Y %H:%M:%S" />
+                                <Select.Option label="%Y%m%d %H:%M:%S (Compact)" value="%Y%m%d %H:%M:%S" />
+                            </Select>
+                        </ControlGroup>
+
+                        <ControlGroup
+                            label="MAX_TIMESTAMP_LOOKAHEAD (characters)"
+                            labelPosition="top"
+                            help="Maximum characters to look ahead for timestamp. Higher values may be slower but more flexible."
+                            style={{ marginBottom: 12 }}
+                        >
                             <Text
                                 value={timeSettings.maxTimestampLookahead}
                                 onChange={(e, { value }) => setTimeSettings(prev => ({ ...prev, maxTimestampLookahead: value }))}
                                 placeholder="25 (default)"
-                                style={{ marginBottom: 8, width: '100%' }}
                             />
-                            <Typography as="p" variant="smallBody" style={{ opacity: 0.7, fontSize: '12px' }}>
-                                Maximum characters to look ahead for timestamp. Higher values may be slower but more flexible.
-                            </Typography>
-                        </div>
-                        
+                        </ControlGroup>
+
                         {error && <Message appearance="fill" type="error" style={{ marginTop: 8 }}>{error}</Message>}
                     </TabLayout.Panel>
                     <TabLayout.Panel label="Custom" panelId="custom">
-                        <Text
-                            value={customRegex}
-                            onChange={(e, { value }) => setCustomRegex(value)}
-                            placeholder="(?<field_name>pattern) or (pattern)"
-                            style={{ fontFamily: 'monospace', marginBottom: 8 }}
-                        />
+                        <ControlGroup label="Custom regex" labelPosition="top" style={{ marginBottom: 8 }}>
+                            <Text
+                                value={customRegex}
+                                onChange={(e, { value }) => setCustomRegex(value)}
+                                placeholder="(?<field_name>pattern) or (pattern)"
+                                style={{ fontFamily: 'monospace' }}
+                            />
+                        </ControlGroup>
                         <Button appearance="primary" disabled={!customRegex.trim()} onClick={extractFieldsWithRegex}>Apply Regex</Button>
                         {error && <Message appearance="fill" type="error" style={{ marginTop: 8 }}>{error}</Message>}
                         <div style={{ marginTop: '16px' }}>
-                            <Typography as="h4">Regex Results Preview</Typography>
+                            <Heading level={4}>Regex Results Preview</Heading>
                             <StyledPreview>
                                 <pre>{JSON.stringify(allFields.filter(f => f.fromRegex), null, 2)}</pre>
                             </StyledPreview>
                         </div>
                     </TabLayout.Panel>
-                    <TabLayout.Panel label="Ask AI" panelId="ai">
+                    <TabLayout.Panel
+                        label={<span>Ask AI <AiBadge compact tooltip={false} /></span>}
+                        panelId="ai"
+                    >
                         <Message appearance="fill" type="info" style={{ marginBottom: 16 }}>
                             <strong>Privacy Notice:</strong> Your sample data and any description you provide will be sent to the configured LLM service for analysis. Please ensure you are comfortable sharing this data with the external service.
                         </Message>
                         <StyledBox marginBottom={16}>
-                            <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                            <Heading level={4} style={{ marginBottom: 8 }}>
                                 Data Description (Optional)
-                            </Typography>
-                            <Typography as="p" variant="body" style={{ marginBottom: 8, opacity: 0.8 }}>
+                            </Heading>
+                            <P style={{ marginBottom: 8, opacity: 0.8 }}>
                                 Provide additional context about your log data to help the AI better understand and extract fields.
-                            </Typography>
+                            </P>
                             <StyledTextArea
                                 value={aiDescription}
                                 onChange={(e, { value }) => setAiDescription(value)}
@@ -1117,11 +911,15 @@ const FieldExtraction = ({
                             appearance="primary"
                             onClick={() => onDetectFields(aiDescription.trim() || null)}
                             disabled={aiFieldLoading || !hasData}
-                            icon={aiFieldLoading ? <WaitSpinner size="small" /> : null}
+                            icon={aiFieldLoading ? <WaitSpinner size="small" /> : <StarSparklesDouble />}
                         />
-                        {!hasData && <Typography as="p" variant="body">Please provide sample data in the first step.</Typography>}
+                        {!hasData && <P>Please provide sample data in the first step.</P>}
 
-                        {aiFieldError && <ErrorMessage>Error: {aiFieldError.message}</ErrorMessage>}
+                        {aiFieldError && (
+                            <Message appearance="fill" type="error" style={{ marginTop: 8 }}>
+                                Error: {aiFieldError.message}
+                            </Message>
+                        )}
 
                         {aiFieldResults && (
                             <>
@@ -1156,59 +954,44 @@ const FieldExtraction = ({
                                 
                                 {aiFieldResults.combined_regex ? (
                                     <>
-                                        <ResultsHeader>Combined Field Extraction Regex</ResultsHeader>
+                                        <Heading level={3} style={{ marginTop: 20, marginBottom: 10 }}>Combined Field Extraction Regex</Heading>
                                         <StyledBox marginBottom={16}>
-                                            <Typography as="p" variant="body" style={{ marginBottom: 8, opacity: 0.8 }}>
+                                            <P style={{ marginBottom: 8, opacity: 0.8 }}>
                                                 This regex extracts all fields from your log data in one pattern. You can modify it if needed.
-                                            </Typography>
+                                            </P>
                                             <StyledTextArea
                                                 value={aiFieldResults.combined_regex}
-                                                onChange={(e, { value }) => {
-                                                    // Update the combined regex in the results
-                                                    setAiFieldResults(prev => ({
-                                                        ...prev,
-                                                        combined_regex: value
-                                                    }));
-                                                }}
+                                                onChange={(e, { value }) => onCombinedRegexChange(value)}
                                                 rows={4}
                                             />
-                                            <Button 
-                                                appearance="secondary" 
-                                                size="small" 
+                                            <Button
+                                                appearance="secondary"
+                                                size="small"
                                                 onClick={() => handlePreviewCombinedRegex(aiFieldResults.combined_regex)}
                                                 style={{ marginRight: 8 }}
                                             >
                                                 Preview Extraction
                                             </Button>
                                             {combinedRegexPreview && (
-                                                <div style={{ 
-                                                    marginTop: 8, 
-                                                    padding: 8, 
-                                                    backgroundColor: theme.backgroundColorSecondary, 
-                                                    borderRadius: 4,
-                                                    border: `1px solid ${theme.borderColor}`
-                                                }}>
-                                                    <Typography as="strong" variant="smallBody">Preview Results:</Typography>
-                                                    <pre style={{ 
-                                                        fontSize: 12, 
-                                                        marginTop: 4,
-                                                        color: theme.textColor
-                                                    }}>{JSON.stringify(combinedRegexPreview, null, 2)}</pre>
-                                                </div>
+                                                <StyledPreviewBox>
+                                                    <P style={{ fontWeight: 500, marginBottom: 0 }}>Preview Results:</P>
+                                                    <StyledPreviewPre>{JSON.stringify(combinedRegexPreview, null, 2)}</StyledPreviewPre>
+                                                </StyledPreviewBox>
                                             )}
                                         </StyledBox>
-                                        
+
                                         <StyledBox marginBottom={16}>
-                                            <Typography as="h4" variant="title4" style={{ marginBottom: 8 }}>
+                                            <Heading level={4} style={{ marginBottom: 8 }}>
                                                 Sample Data with Highlighted Fields
-                                            </Typography>
-                                            <StyledSampleDataBox
-                                                dangerouslySetInnerHTML={{ 
-                                                    __html: highlightFieldsInSample(sampleData, aiFieldResults.combined_regex) 
-                                                }}
-                                            />
+                                            </Heading>
+                                            <StyledSampleDataBox>
+                                                {renderHighlightedText(
+                                                    sampleData || '',
+                                                    collectCombinedRegexRanges(sampleData || '', aiFieldResults.combined_regex)
+                                                )}
+                                            </StyledSampleDataBox>
                                         </StyledBox>
-                                        
+
                                         <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                                             <Button
                                                 appearance="primary"
@@ -1220,22 +1003,22 @@ const FieldExtraction = ({
                                         </div>
                                     </>
                                 ) : (
-                                    <Typography as="p" variant="body">The AI could not generate a combined regex for the provided data.</Typography>
+                                    <P>The AI could not generate a combined regex for the provided data.</P>
                                 )}
                             </>
                         )}
                     </TabLayout.Panel>
                 </TabLayout>
                 <div style={{ marginTop: 24 }}>
-                    <Typography as="h5" variant="title4" style={{ fontWeight: 500 }}>
+                    <Heading level={4} style={{ fontWeight: 500 }}>
                         Sample Data Preview:
-                    </Typography>
-                    <StyledPreview
-                        dangerouslySetInnerHTML={{ __html: highlightExistingFields(sampleData || '').replace(/\n/g, '<br/>') }}
-                    />
+                    </Heading>
+                    <StyledPreview>
+                        {renderHighlightedText(sampleData || '', collectFieldMatchRanges(sampleData || ''))}
+                    </StyledPreview>
                 </div>
                 <StyledBox marginTop={24}>
-                    <Typography as="h3" variant="title3">Extracted Fields ({allFields.length})</Typography>
+                    <Heading level={3}>Extracted Fields ({allFields.length})</Heading>
                     <Table stripe style={{ marginTop: 8 }}>
                         <Table.Head>
                             <Table.HeadCell>Field Name</Table.HeadCell>
@@ -1252,9 +1035,9 @@ const FieldExtraction = ({
                                 allFields.map((field, idx) => (
                                     <Table.Row key={`${field.name}-${idx}`}>
                                         <Table.Cell>
-                                            <StyledHighlight color="#4F46E5">
+                                            <StyledHighlight $colorIndex={7}>
                                                 {field.name}
-                                                {field.source === 'splunk_existing' && <span style={{ color: '#1976D2', fontWeight: 'bold' }}>*</span>}
+                                                {field.source === 'splunk_existing' && <StyledExistingMarker>*</StyledExistingMarker>}
                                             </StyledHighlight>
                                         </Table.Cell>
                                         <Table.Cell>{field.type || 'string'}</Table.Cell>
@@ -1267,9 +1050,9 @@ const FieldExtraction = ({
                         </Table.Body>
                     </Table>
                     {allFields.some(f => f.source === 'splunk_existing') && (
-                        <Typography as="p" variant="smallBody" style={{ marginTop: 8, opacity: 0.7, fontStyle: 'italic' }}>
+                        <P style={{ marginTop: 8, opacity: 0.7, fontStyle: 'italic' }}>
                             * Fields marked with an asterisk are already extracted by Splunk and don't require additional configuration.
-                        </Typography>
+                        </P>
                     )}
                 </StyledBox>
                 <StyledLayout gutter={8} marginTop={32} style={{ justifyContent: 'space-between' }}>
@@ -1282,7 +1065,7 @@ const FieldExtraction = ({
                         <Button
                             appearance="primary"
                             onClick={() => onContinueToMapping()}
-                            disabled={loading || allFields.length === 0}
+                            disabled={allFields.length === 0}
                         >
                             Continue to Mapping
                         </Button>
@@ -1303,6 +1086,7 @@ FieldExtraction.propTypes = {
     aiFieldResults: PropTypes.object,
     aiFieldLoading: PropTypes.bool,
     aiFieldError: PropTypes.object,
+    onCombinedRegexChange: PropTypes.func,
 };
 
 export default FieldExtraction; 

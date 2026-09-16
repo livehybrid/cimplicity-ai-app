@@ -20,6 +20,6 @@ getUserTheme()
     })
     .catch((e) => {
         const errorEl = document.createElement('span');
-        errorEl.innerHTML = e;
+        errorEl.textContent = String(e);
         document.body.appendChild(errorEl);
     });
