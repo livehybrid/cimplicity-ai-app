@@ -18,7 +18,8 @@ package metadata, not assumed.
 gated on Python 3.13 and drags in langchain, and would still need a customer API key (§3C). `| ai`
 does work as a chat completion and is the only route to key-free Splunk Hosted Models, at roughly
 10x the latency (§2b, §3A). An app cannot register itself as an agent, though it can register
-skills (§3E).
+skills (§3E). Shipping CIMPlicity *as* agents is the most interesting end state and the one with
+the worst prerequisite chain, so it belongs as a second surface rather than a backend (§3F).
 
 ---
 
@@ -232,6 +233,8 @@ Handler builds the prompt, dispatches a oneshot search through `| ai`, reads `ai
 - Agents can carry MCP tools, including ours.
 - Heavier: agentic runtime, per-customer agent provisioning, async status polling.
 
+See **§3F**, which takes this much further: shipping CIMPlicity *as* a set of agents.
+
 ### C. `splunklib.ai` SDK in the handler
 
 Native Python, no SPL marshalling. Checked properly this time, against the published package.
@@ -359,6 +362,86 @@ That is a good product story and it composes with work already finished. It is *
 for options A to D, because the direction of the call is reversed: the agent calls us. It does
 nothing for the Data Input page, which needs a synchronous answer from a button press. Treat it as a
 separate feature, not as the LLM-access decision.
+
+---
+
+### F. Ship CIMPlicity *as* agents (skills + MCP tools + a customer connection)
+
+The Buildathon shape: rather than CIMPlicity calling an LLM, CIMPlicity becomes skills and tools,
+and an agent orchestrates them. Invoked from SPL with `| aiagent agent_name=... prompt=...`.
+
+**The shape is real and already running on the 6.1 stack.** `KillChainSweep` is exactly this:
+
+```json
+{ "agent_name": "KillChainSweep", "state": "Available", "agent_timeout": 450,
+  "llm": { "provider": "Splunk Hosted Models", "model": "OpenAI GPT-OSS 120B",
+           "connection_name": "SplunkLLMGPTOSS120B", "max_tokens": 50000,
+           "response_variability": 0, "reasoning_effort": "LOW" },
+  "skills": ["SecurityDataFingerprint", "KillChainInstrumentSPL",
+             "EvidenceAndReportingContract", "BudgetAndHygiene"],
+  "tools": { "mcps": [ { "name": "splunktrust",
+                         "tools": ["splunk_run_query", "splunk_run_saved_search", ...] } ] },
+  "system_prompt": "<4992 chars>", "task_prompt": "<76 chars>" }
+```
+
+**Four things it fixes that no other option does.**
+
+1. **The 2000-token ceiling is gone.** Every agent on the stack carries `max_tokens: 50000` at the
+   *agent* level, overriding the connection's 2000. Risk 3 disappears outright, and only here.
+2. **Skills answer the prompt-externalisation question better than a conf file.** They are
+   API-creatable (`POST /mltk/agent_skills`, verified 200), they are the right size (Splunk's own
+   managed skills run 2.7 KB to 4.2 KB), and the customer edits them in a supported Splunk UI
+   instead of a CIMPlicity settings page we would have to build and document. §5's mechanism
+   becomes a fallback for non-Toolkit installs rather than the primary.
+3. **No API key in CIMPlicity at all.** The connection is the customer's. This is the original
+   motivation for the whole investigation, and F satisfies it as fully as A does.
+4. **`tools.knowledge_bases[]` can hold the CIM models.** Today every `cim_mapping` call inlines the
+   full field list for the chosen data model (44 fields for Authentication, far more for Network
+   Traffic). As a knowledge base that becomes retrieval instead of prompt bulk.
+
+**What stops it being the primary architecture.**
+
+1. **The agent cannot be shipped, and the prerequisite chain is brutal.** Agents are UI-only (§3E).
+   For an **on-premises** customer, Agent Launchpad additionally requires the **Splunk Cloud Connect
+   app plus a Splunk-managed tenant created and onboarded through SCC**, after which the AI Toolkit
+   is activated for that tenant. So the full chain before CIMPlicity does anything is: AI Toolkit
+   6.x → Splunk Cloud Connect → SCC tenant onboarded → LLM connection → MCP connection with a token
+   → agent assembled by hand with our skills attached and our tools allowlisted. That is six manual
+   steps in front of an app whose entire proposition is that onboarding should be easy.
+2. **It is not air-gapped.** SCC onboarding requires outbound connectivity to Splunk-hosted
+   services. That removes regulated and isolated on-premises customers completely, and they are a
+   meaningful part of the Splunkbase audience.
+3. **Latency goes the wrong way.** `| ai` already costs 29 s (§2b). An agent adds tool-calling
+   rounds and resends skill text every turn; `agent_timeout` is 450 s on every agent here and
+   `commands.conf` sets `maxwait = 1500` for `aiagent`. That is a batch-job shape, not a
+   button-press shape.
+4. **Failures are silent.** A failed agent run returns `dispatchState: DONE`, `resultCount: 1` and
+   `status="error"`, so the search looks entirely successful. Every call site must gate on
+   `status="success"` before parsing.
+5. **Our two calls are not agentic problems.** Field extraction and CIM mapping are single-turn
+   deterministic transformations: no planning, no tool selection, no iteration. Wrapping them in an
+   agent buys non-determinism (`response_variability`), a tool loop and a timeout, to solve
+   something that is one HTTP request. We want the same regex twice for the same event.
+
+**Where it genuinely wins: the job CIMPlicity does not do today.** "Onboard this source end to end"
+is a real agentic problem: sample the index, propose a sourcetype, extract fields, check them
+against CIM, write `props`/`transforms`, validate against live data, iterate. That is planning plus
+tools plus iteration, and **we already publish the MCP tools it would need**. It is a materially
+bigger product claim than the current app makes.
+
+**Verdict: a second product surface, not a backend swap.** Keep the Data Input page synchronous on
+A or on today's direct call, and offer the agent as the "onboard a whole source" mode for customers
+who already have the Toolkit. Steal one thing from it immediately and unconditionally: **skills as
+the prompt store** (see §5).
+
+**Open, and needed before committing to F:**
+
+- Can an app register skills **at install time**? `POST /mltk/agent_skills` is proven with a user
+  bearer token; whether it works from an install trigger under `system_authtoken`, and what ACL the
+  resulting skills carry, is untested.
+- Are skills available on-premises **without** SCC, or does the whole Launchpad surface including
+  skills sit behind tenant onboarding? If skills are local, §5 gets much more attractive; if not,
+  F's best idea is unavailable to exactly the customers who most need a local prompt store.
 
 ---
 
