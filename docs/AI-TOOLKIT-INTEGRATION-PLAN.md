@@ -1,17 +1,24 @@
 # AI Toolkit integration + prompt externalisation — investigation and plan
 
-**Status:** investigation complete, plan proposed. Nothing implemented.
+**Status:** investigation complete, **Phase 0 spike run and passed**. Nothing else implemented.
 **Date:** 2026-09-21.
 
 Two questions were asked:
 
 1. Can CIMPlicity use the Splunk **AI Toolkit** (the app formerly known as MLTK) for its LLM
    access, instead of carrying its own API-key/endpoint/model configuration page? There is an
-   `ai` search command — are there also endpoints or library access?
+   `ai` search command, are there also endpoints or library access?
 2. Can the **prompts be lifted out of the code** so a customer can configure them, from the
    settings page or a macro?
 
-Everything in section 1 was checked against live Splunk instances, not assumed.
+Everything in sections 1, 2, 2b and 3 was checked against live Splunk instances or published
+package metadata, not assumed.
+
+**Answers in one line each.** No REST inference endpoint exists (§2). The `splunklib.ai` library is
+gated on Python 3.13 and drags in langchain, and would still need a customer API key (§3C). `| ai`
+does work as a chat completion and is the only route to key-free Splunk Hosted Models, at roughly
+10x the latency (§2b, §3A). An app cannot register itself as an agent, though it can register
+skills (§3E).
 
 ---
 
@@ -26,7 +33,12 @@ Everything in section 1 was checked against live Splunk instances, not assumed.
 | `ai` needs a configured model | running it on .222 fails: `FATAL Error in 'ai' command: No default model was found.` |
 | LLM connections live in **KV**, not conf | `aitk_llm_connection` collection on 6.1; **no `aitk_*` collections on .222** |
 | `mlspl.conf` `ai:*` stanzas are tuning only | `ai:LLMIntegrations`, `ai:AgentIntegrations`, `ai:AllowedDomains` hold retries/timeouts/limits, no credentials |
-| **A REST handler exists, but exposes no inference route** | `btool restmap list --app=Splunk_ML_Toolkit --debug` shows `[script:mltk]`; its route table serves agent/vector-store management only (see §2) |
+| **A REST handler exists, but exposes no inference route** | `btool restmap list --app=Splunk_ML_Toolkit --debug` shows `[script:mltk]`; its route table serves agent, skill and vector-store management only (see §2) |
+| `\| ai` **works as a chat completion**, result in `ai_result_1` | `\| makeresults \| ai prompt="say OK"` → `ai_result_1="OK"` on the 6.1 stack |
+| Its parameters are **only** `prompt`, `connection`, `provider`, `model` | every other name rejected with `Param name <x> is not allowed` (§2b) |
+| The prompt is **`str.format()`-ed against the event's fields** | `{ok}` → `FATAL 'ok'`; `{{ok}}` and `{_raw}` both work (§2b) |
+| **`splunklib.ai` needs Python 3.13 and langchain** | `splunk-sdk` 3.0.1 `[ai]` extra, `requires_python >=3.13`, hard `ImportError` in `splunklib/ai/__init__.py` (§3C) |
+| **Agents cannot be created by an app**, skills can | `POST /mltk/agents` → 500; KV row invokes as `Agent Does not exist.`; `POST /mltk/agent_skills` → 200 (§3E) |
 
 ### What a connection looks like (`aitk_llm_connection`)
 
@@ -92,29 +104,105 @@ The earlier `/services/mltk → 500` was a live handler rejecting an empty reque
 (The `admin/restmap` ACL view had reported zero MLTK-owned stanzas, which is why the first pass
 missed it — btool reading the conf files on disk is the reliable check.)
 
-**However, the route table is agent and vector-store *management*, not inference.** Probing the
-handler (it answers `Unknown REST endpoint: <name>` for invalid routes, so the table can be mapped):
+**However, the route table is agent, skill and vector-store *management*, not inference.** The
+handler answers `Unknown REST endpoint: <name>` for invalid routes, so the table can be mapped
+exactly. Two call conventions are required or every route looks broken:
+
+1. the **user namespace**, `/servicesNS/<user>/Splunk_ML_Toolkit/mltk/...`, not `/services/` and not
+   `nobody`
+2. **`--http1.1`**, or the GET dies with `bad character (49) in reply size`, a chunked-encoding
+   artefact that reads like a server error and is not
 
 | Route | Result |
 |---|---|
-| `/mltk/agents` | exists — **DELETE** only (GET/POST/PUT → 405) |
-| `/mltk/vector_stores` | exists — GET/POST → 405 |
-| `/mltk/agent_templates` | exists — GET (500 on this stack) |
-| `llm`, `llm_connections`, `connections`, `models`, `chat`, `completions`, `inference`, `tools`, `prompts`, `usage`, `quotas`, … | `Unknown REST endpoint` |
+| `/mltk/agents?agent_type=aitk` | **GET 200**, lists agents (reads `aitk_agent_collection`) |
+| `/mltk/agents` | POST → 500 for every payload shape; DELETE accepted |
+| `/mltk/agent_skills` | **GET and POST 200**, skills are creatable over the API |
+| `/mltk/agent_templates` | **GET 200**, returns the templates Splunk ships |
+| `/mltk/vector_stores` | exists |
+| `llm`, `llm_connections`, `connections`, `models`, `chat`, `completions`, `inference`, `tools`, `prompts`, `usage`, `quotas` | `Unknown REST endpoint` |
 
-So the corrected finding is narrower but lands in the same place: **there is no REST inference or
-chat-completion endpoint**. LLM access is still reachable only through the `ai` / `aiagent` search
-commands, so "use the AI Toolkit" still means dispatching a search from our REST handler and
-parsing the result — a different shape from our current direct HTTPS call.
+An earlier probe reported 405s on `agents`; that was the missing namespace and `--http1.1`, not the
+route. The conclusion is unchanged and now rests on a correct measurement: **there is no REST
+inference or chat-completion endpoint.** LLM access is reachable only through the `ai` / `aiagent`
+search commands, so "use the AI Toolkit" means dispatching a search from our REST handler and
+parsing the result, which is a different shape from our current direct HTTPS call.
 
 One useful detail falls out of the handler definition: `python.required = 3.13` is on *their*
 handler. Calling `/mltk` over HTTP from our py3.9 handler would have been fine. It does not help
-here only because no inference route exists — not because of a Python constraint.
+here only because no inference route exists, not because of a Python constraint.
 
-That matters because our two calls are not chat-style summarisation. They send a multi-KB prompt
-and demand a **strict JSON document** back. Pushing that through SPL means quoting a prompt that
-itself contains `{`, `}`, quotes and regex backslashes, then recovering a JSON blob out of a result
-field. That is the main engineering risk and it should be proven before anything is committed to.
+### LLM connections are not creatable over REST either
+
+`aitk_llm_connection` is a KV collection with no REST route in front of it. The Launchpad UI writes
+it directly. Seven connections exist on the 6.1 stack, all with `llm_params.max_tokens = 2000` and
+`maximum_result_rows = 10`. Since `| ai` takes no `max_tokens` argument (see §2b), **a connection's
+`max_tokens` is a hard ceiling on any reply CIMPlicity can get through the Toolkit**, and only the
+customer can raise it, in the Toolkit UI.
+
+---
+
+## 2b. The `| ai` contract, measured
+
+Run against the 6.1 stack on 2026-09-21. This is the part that was previously assumed.
+
+**The complete parameter allowlist is `prompt`, `connection`, `provider`, `model`.** Everything else
+is rejected with `Param name <x> is not allowed`: no `max_tokens`, no `temperature`, no
+`system_prompt`, no `response_format`, no `timeout`, no output-field control. `model` and `provider`
+must be given together. Result lands in **`ai_result_1`**.
+
+**The prompt is run through Python `str.format()` against the event's fields.** This is the single
+finding that decides how the integration has to be built:
+
+| Prompt | Outcome |
+|---|---|
+| `"reply with exactly {ok}"` | **FATAL** `Error in 'ai' command: 'ok'` (a `KeyError`) |
+| `"reply with exactly {{ok}}"` | works, model receives `{ok}` |
+| `... \| eval widget="ZEBRA" \| ai prompt="repeat: {widget}"` | works, returns `ZEBRA` |
+| `... \| eval _raw="badge=BK-88412 ..." \| ai prompt="name the badge in: {_raw}"` | works, returns `BK-88412` |
+| `"repeat: {nosuchfield}"` | **FATAL** `'nosuchfield'` |
+| a value containing braces, substituted via `{field}` | **safe**, substituted values are not re-scanned |
+
+So every literal brace in a prompt is a landmine, and both CIMPlicity prompts are full of them: they
+show the model a JSON schema. Worse, `ai_detection` injects the **customer's raw event** into the
+prompt, and any event containing `{` would have killed the search.
+
+**Both problems are solved by the same move: pass data as fields, not inside the prompt literal.**
+Static template text doubles its braces; every variable goes in via `| eval` and is referenced as
+`{field}`. Because substituted values are not re-formatted, a customer's JSON log is then safe by
+construction. The command's own default prompt (`"Explain and summarize this data: {_raw}"`) shows
+this was the intended usage all along.
+
+### Phase 0 spike: PASSED
+
+Both real prompts were rebuilt in that shape and run end to end, and both replies parsed with the
+app's existing tolerant parser (`lib/llm_response.py`), unchanged:
+
+| Case | Data in | Reply | Parsed |
+|---|---|---|---|
+| `cim_mapping` (Authentication, 44 CIM fields, 12 extracted fields) | 1205 chars over 3 fields | 1734 chars | **10 mappings** |
+| `ai_detection` (raw event containing a literal `{"zone":"secure"}`) | 216 chars | 1174 chars | **13 fields**, correct `(?<name>)` syntax |
+
+Strict JSON round-trips through `| ai`. **Option A is viable.**
+
+### The cost is latency
+
+| Call | `runDuration` |
+|---|---|
+| `\| makeresults \| ai prompt="say OK"` | **~16 s** |
+| `cim_mapping`, default connection (Splunk Hosted, GPT-OSS 120B, reasoning MEDIUM) | **84.6 s** |
+| `cim_mapping`, `connection="livehybridsonnet"` (OpenAI-compatible, claude-sonnet-5) | **29.4 s** |
+| `cim_mapping`, our current direct HTTPS call on claude-sonnet-5 | **~3 s** |
+
+A trivial prompt costs ~16 s, so that is fixed overhead: search dispatch plus a chunked py3.13
+command start plus connection lookup, before any token is generated. Same model, same prompt, the
+Toolkit path is **roughly 10x slower** than the direct call. For a UI that already felt slow enough
+to warrant an event picker, that is the material objection to option A, not JSON fidelity.
+
+Also worth knowing: `| ai connection=<name>` only resolves connections shared with the caller.
+`OpenAI_GPTOSS_120B` (`default_users: []`) failed with `No configuration found for llm connection`
+while `livehybridsonnet` worked, so connection visibility is a per-user concern the app must
+degrade around.
 
 ---
 
@@ -122,15 +210,19 @@ field. That is the main engineering risk and it should be proven before anything
 
 ### A. `| ai` via a dispatched search  — *recommended path*
 
-Handler builds the prompt, dispatches a oneshot search through `| ai`, reads the result field.
+Handler builds the prompt, dispatches a oneshot search through `| ai`, reads `ai_result_1`.
 
 - Works on **5.6.4 and 6.x**, so it does not strand .222.
 - Uses the AITK connection, so **the customer's key (or no key at all) is managed in one place**.
-- Unlocks **Splunk Hosted Models** — no customer API key, which is a genuinely better story for
-  a Splunkbase app than "bring your own OpenRouter key".
+- Unlocks **Splunk Hosted Models**, ie no customer API key, which is a genuinely better story for
+  a Splunkbase app than "bring your own OpenRouter key". This is the **only** one of the four
+  options that reaches hosted models.
 - No Python-version change.
-- Risks: SPL quoting/escaping of a large prompt; latency and search overhead per call;
-  `llm_params.max_tokens` / `maximum_result_rows` truncating a long JSON reply.
+- **Proven** (§2b): strict JSON round-trips, and customer data containing braces is safe provided
+  it is passed as a field rather than inlined in the prompt.
+- Residual risks, now quantified: **~16 s of fixed overhead per call** and roughly 10x the latency
+  of the direct call on the same model; the connection's `llm_params.max_tokens` (2000 on every
+  connection seen) is an unraisable ceiling from our side; connection visibility is per-user.
 
 ### B. `| aiagent`
 
@@ -142,12 +234,54 @@ Handler builds the prompt, dispatches a oneshot search through `| ai`, reads the
 
 ### C. `splunklib.ai` SDK in the handler
 
-- The cleanest technically — native Python, no SPL marshalling, ideal for strict JSON.
-- **Blocked today.** The SDK's agent invocation needs **Python 3.13**, and our handlers are
-  deliberately `python.required = 3.9` because the shipped runtime libs are pinned to their last
-  py3.9 releases (`nltk 3.9.2`, `scipy 1.13.1`, `scikit-learn 1.6.1`, `scrubadub 2.0.1`). Moving
-  the handlers to 3.13 would invalidate that whole pin set. Only viable as a **separate 3.13
-  handler** alongside the existing 3.9 ones, which is a real piece of work.
+Native Python, no SPL marshalling. Checked properly this time, against the published package.
+
+**What it actually is.** `splunklib.ai` ships in **`splunk-sdk` 3.0.1** under the `[ai]` extra. We
+currently pin `splunk-sdk==2.1.1`, which does **not** contain it. The package metadata is decisive:
+
+```
+requires_python: >=3.13
+[ai]        httpx==0.28.1, langchain>=1.3.15, mcp>=1.28.1,<2.0.0, pydantic>=2.13.4
+[openai]    + langchain-openai>=1.5.1        [anthropic] + langchain-anthropic>=1.5.6
+[google]    + langchain-google-genai==4.3.4, google-auth>=2.56.3
+```
+
+and `splunklib/ai/__init__.py` opens with a hard gate:
+
+```python
+if sys.version_info < (3, 13):
+    raise ImportError("Python 3.13 or newer is required to use this module")
+```
+
+**Is the Python version the blocker? Partly, and it is smaller than it looks.** `python.required`
+is set **per stanza** in `restmap.conf`, not per app, and only `pii_detection` genuinely needs 3.9:
+it is the one that imports `scrubadub` and so drags in `nltk` / `scipy` / `scikit-learn`.
+`ai_detection`, `cim_mapping`, `ai_model_choices`, `autoregister` and the settings handler import
+nothing beyond `solnlib`, `requests` and the stdlib; their 3.9 pin is inherited by convention, not
+by dependency. UCC already supports splitting libraries by interpreter and **this app already does
+it**: `globalConfig.json` carries `os-dependentLibraries` with `python_version: "3.9"` and
+`target: "3rdparty/linux_lib_py39"` for `regex` and `numpy`. So a 3.13 AI handler beside the 3.9
+PII handler is a supported layout, not a bespoke hack.
+
+**The real blockers are the other two.**
+
+1. **The dependency tree.** `langchain` + `pydantic` + `httpx` + `mcp` + a provider adapter vendored
+   into `lib/` is tens of megabytes of third-party code in a Splunkbase submission, on top of the
+   existing py3.9 scientific stack. That is an AppInspect and maintenance burden out of all
+   proportion to two JSON calls.
+2. **It does not buy the thing we actually want.** The SDK's predefined models are `OpenAIModel`,
+   `AnthropicModel` and `GoogleModel`, each taking `base_url` and `api_key`. **There is no
+   Splunk-hosted, no-key path in the SDK.** Hosted models are brokered by the Toolkit and reached
+   through `| ai`, not through the library. So option C leaves us exactly where we are on the key
+   question, while adding langchain.
+
+**What it would buy.** `splunklib/ai/structured_output.py` and `Agent(output_schema=...)` enforce a
+pydantic schema on the reply, which is stronger than anything `| ai` offers (no `response_format`
+there). Also `security.detect_injection` and `truncate_input`. Genuinely nice, but `lib/llm_response.py`
+already recovers our JSON reliably, so this solves a problem we have already solved cheaply.
+
+**Verdict: no.** Not because of Python 3.13, which is tractable, but because it is a heavy
+dependency tree that still requires a customer API key.
 
 ### D. Borrow the connection's credentials, keep our direct HTTPS call
 
@@ -157,15 +291,51 @@ Read `aitk_llm_connection` and reuse provider/model, keeping our own HTTP client
   there is no key to borrow, the Toolkit brokers that access itself. It also bypasses the quota
   and usage accounting. Worth it only as a transitional nicety, not as the destination.
 
+### E. Register CIMPlicity itself as an AITK agent
+
+Attractive in principle: the agent owns the prompts, the model and the key, and CIMPlicity supplies
+the tools. It fails on one fact and then becomes something else.
+
+**An app cannot create an agent.** Verified two ways on the 6.1 stack:
+
+- `POST /mltk/agents` returns **500 `Failed to create agent`** for every payload shape tried, under
+  both token and session-key auth, so it is not a permissions problem.
+- Writing a well-formed row straight into `aitk_agent_collection` **succeeds** and the agent then
+  appears in listings, but invoking it returns `status="error"`,
+  `result_1="Agent Does not exist."`
+
+The reason is in the record: `runtime_type` is `AWS_AGENT_CORE` with a server-provisioned
+`runtime_params.runtime_id` and `memory_params.memory_id`. The runtime is provisioned cloud-side by
+Splunk, not by the KV row. **Agent creation is a UI action in Agent Launchpad**, so a Splunkbase app
+can neither ship an agent nor create one on install.
+
+**What an app *can* register is a skill.** `GET`/`POST /mltk/agent_skills` both return 200, and
+skills take `{name, category, skill_text, description}`. Combined with the MCP side, that gives a
+real but *inverted* integration:
+
+> CIMPlicity ships its onboarding know-how as AITK **skills**, and exposes `ai_detection` and
+> `cim_mapping` as **MCP tools** (which it already does). A customer builds an agent in Launchpad,
+> attaches our skills and our MCP tools, and the agent does data onboarding conversationally.
+
+That is a good product story and it composes with work already finished. It is **not** a substitute
+for options A to D, because the direction of the call is reversed: the agent calls us. It does
+nothing for the Data Input page, which needs a synchronous answer from a button press. Treat it as a
+separate feature, not as the LLM-access decision.
+
 ---
 
 ## 4. Proposed plan
 
-**Phase 0 — spike, go/no-go (half a day).** Before committing: prove that a realistic
-CIMPlicity prompt (~2 KB, containing braces, quotes and regex backslashes) plus a raw log sample
-can be pushed through `| ai` and a **valid strict JSON document** recovered. Test against both a
-`Splunk Hosted Models` connection and an `OpenAI`-compatible one. If JSON fidelity cannot be made
-reliable, option A dies and the answer is C behind a 3.13 handler.
+**Phase 0 — spike. DONE 2026-09-21, PASSED.** Both real prompts round-trip through `| ai` as strict
+JSON against both a `Splunk Hosted Models` connection and an `OpenAI`-compatible one, parsed by the
+existing `lib/llm_response.py` (§2b). Two things had to be got right and neither was obvious: the
+prompt is `str.format()`-ed, so static braces must be doubled, and all variable data must be passed
+as `| eval` fields so that customer data containing braces cannot break the search.
+
+The spike also moved the decision. JSON fidelity was expected to be the risk and it is not.
+**Latency is:** ~16 s of fixed overhead per call, and ~10x the direct call on the same model. That
+is the number the Toolkit route has to justify, and it is why Phase 2 below makes the backend a
+setting rather than a replacement.
 
 **Phase 1 — make the call site swappable (no behaviour change).** Extract the LLM call behind a
 small interface (`lib/llm_client.py`) with one implementation being today's direct HTTPS call.
@@ -265,14 +435,24 @@ first and benefits the current direct-HTTPS path immediately.
 
 ## 6. Risks and open questions
 
-1. **JSON fidelity through SPL** — the phase 0 go/no-go. Everything in option A rests on it.
-2. **Latency** — a dispatched search per call versus a direct HTTPS request. Needs measuring against
-   the current ~7–20 s; the demo already suffers when calls are slow.
-3. **Truncation** — `llm_params.max_tokens` (2000 on the sampled connection) may be below what our
-   CIM-mapping reply needs. Our extraction replies have run to ~1.9 KB already.
+1. ~~**JSON fidelity through SPL**~~ — **CLOSED, passed** (§2b). Both prompts round-trip as strict
+   JSON once braces are doubled and data is passed as fields.
+2. **Latency** — **MEASURED and now the main objection.** ~16 s fixed overhead per call; 29.4 s
+   versus ~3 s for the same prompt on the same model direct. This is a UI-blocking call.
+3. **Truncation** — **CONFIRMED as a real constraint.** Every connection on the 6.1 stack carries
+   `llm_params.max_tokens = 2000` and `maximum_result_rows = 10`, and `| ai` accepts no `max_tokens`
+   argument, so the ceiling is the customer's to raise in the Toolkit UI and ours only to detect.
+   The `cim_mapping` reply came back at 1734 chars against a 44-field model; a wider model such as
+   Network Traffic will be closer to the limit.
 4. **.222 is on 5.6.4** — upgrade to 6.1 needed for anything past bare `| ai`.
 5. **Splunkbase dependency question** — making the AI Toolkit *required* adds a dependency for
    every customer. It should stay optional, with direct-HTTPS as the default.
-6. **Who owns the connection** — `aitk_llm_connection` rows carry an ACL and `default_users`.
-   Our handlers run under `passSystemAuth`; whether that context can resolve a user-scoped default
+6. **Who owns the connection** — still open, and §2b sharpened it. `| ai connection=<name>` resolved
+   `livehybridsonnet` (`default_users: ['*']` on the working ones) but failed with
+   `No configuration found for llm connection` for `OpenAI_GPTOSS_120B` (`default_users: []`).
+   Our handlers run under `passSystemAuth`; whether that context resolves a user-scoped default
    connection is unverified and needs checking before phase 2.
+7. **Which connection is the default** — bare `| ai` works on the 6.1 stack with no `connection`
+   argument, so a default exists, but nothing in `aitk_llm_connection` carries an `is_default` flag.
+   How the default is chosen (and what happens when a customer has none) needs pinning down, since
+   it determines what CIMPlicity shows when the Toolkit is installed but unconfigured.
