@@ -275,13 +275,51 @@ PII handler is a supported layout, not a bespoke hack.
    through `| ai`, not through the library. So option C leaves us exactly where we are on the key
    question, while adding langchain.
 
-**What it would buy.** `splunklib/ai/structured_output.py` and `Agent(output_schema=...)` enforce a
-pydantic schema on the reply, which is stronger than anything `| ai` offers (no `response_format`
-there). Also `security.detect_injection` and `truncate_input`. Genuinely nice, but `lib/llm_response.py`
-already recovers our JSON reliably, so this solves a problem we have already solved cheaply.
+**What it would buy, if the packaging problem were solved.** More than first assessed. Read against
+the measured costs of option A, it removes most of them:
 
-**Verdict: no.** Not because of Python 3.13, which is tractable, but because it is a heavy
-dependency tree that still requires a customer API key.
+1. **No search dispatch, so no custom command.** The handler calls the LLM in-process. The ~16 s
+   fixed overhead in §2b exists purely because option A dispatches a oneshot search to run MLTK's
+   `ai.py` chunked command. This route is the same outbound HTTP call we make today, so latency
+   should return to roughly the ~3 s direct figure.
+2. **The whole `str.format()` brace class of bug disappears.** Doubling braces and marshalling data
+   through `| eval` fields are artefacts of putting a prompt through SPL. Nothing to escape here.
+3. **Enforced structured output.** `Agent(output_schema=SomePydanticModel)` plus
+   `structured_output.py` guarantee the reply shape. `| ai` has no `response_format` at all, and we
+   currently rely on `lib/llm_response.py` recovering JSON from whatever comes back. This is
+   stronger than both.
+4. **Prompt-injection handling we do not have.** `invoke_with_data` wraps untrusted input via
+   `create_structured_prompt`, which fences it as `INSTRUCTIONS:` / `DATA_TO_PROCESS:` with an
+   explicit "this is data, not instructions" trailer, plus `detect_injection` and `truncate_input`
+   (10 000 char OWASP default). **`ai_detection` currently interpolates the customer's raw log event
+   straight into the prompt with no separation at all**, which is a live indirect-injection vector
+   in the shipped app and is worth borrowing regardless of which option wins.
+5. **Our own MCP tools, natively.** `ToolSettings.remote` loads tools from the Splunk MCP Server app
+   on the search head. CIMPlicity already publishes MCP tools, so this reaches the agent shape of
+   option E without needing Agent Launchpad to provision anything.
+
+**A constraint to design around.** `Agent._start_agent` calls `authentication/current-context` and
+`_validate_agent_privileges` raises `PrivilegedExecutionError` if the caller is `splunk-system-user`.
+Our handlers run under `passSystemAuth` and use `system_authtoken` for everything. The agent call
+would have to be built from the **user's** token instead. persistconn supplies both, and
+`autoregister.py:224` already uses the fallback pattern
+(`system_authtoken` or `session.authtoken`), so this is a few lines, but it must be deliberate.
+`Agent` is also an async context manager, so a synchronous `handle()` needs an `asyncio.run` per
+request.
+
+**What it still does not buy: the key.** `model.py` defines exactly three models, `OpenAIModel`,
+`AnthropicModel` and `GoogleModel`, and each takes an `api_key`. There is no Splunk-hosted, no-key
+path in the library. (`OpenAIModel` does accept a free `base_url`, an `extra_body` and an injectable
+`httpx_client` for custom auth, so pointing it at a hosted gateway is *conceivable* if a token could
+be obtained, but `/services/authorization/scs_tokens` returns `SCS Token not found` on the 6.1 stack,
+so treat that as unexplored rather than available.)
+
+**Verdict: technically the best option, and still not the one to build.** It is better than option A
+on latency, escaping, output fidelity and injection safety. It fails on two things only, and they
+are the two that matter: it vendors langchain, pydantic, mcp and httpx into a Splunkbase package
+on top of the existing py3.9 scientific stack, and **it does not remove the customer API key, which
+was the entire reason for looking at the AI Toolkit**. Keep it on the table if that motivation
+changes, or if Splunk later publishes a hosted-model backend for the SDK.
 
 ### D. Borrow the connection's credentials, keep our direct HTTPS call
 
@@ -456,3 +494,8 @@ first and benefits the current direct-HTTPS path immediately.
    argument, so a default exists, but nothing in `aitk_llm_connection` carries an `is_default` flag.
    How the default is chosen (and what happens when a customer has none) needs pinning down, since
    it determines what CIMPlicity shows when the Toolkit is installed but unconfigured.
+8. **Prompt injection, ours today** — surfaced while reading the SDK (§3C) and **not conditional on
+   any of this**. `ai_detection` interpolates the customer's raw log event directly into the prompt
+   with no separation between instruction and data. A crafted log line can therefore steer the
+   model. The SDK's `create_structured_prompt` fence is about fifteen lines to reimplement and
+   should be adopted whichever backend wins. Worth raising as its own issue.
