@@ -26,7 +26,7 @@ Everything in section 1 was checked against live Splunk instances, not assumed.
 | `ai` needs a configured model | running it on .222 fails: `FATAL Error in 'ai' command: No default model was found.` |
 | LLM connections live in **KV**, not conf | `aitk_llm_connection` collection on 6.1; **no `aitk_*` collections on .222** |
 | `mlspl.conf` `ai:*` stanzas are tuning only | `ai:LLMIntegrations`, `ai:AgentIntegrations`, `ai:AllowedDomains` hold retries/timeouts/limits, no credentials |
-| **No usable REST inference API** | `/services/mltk` → 500, `/services/aitk` and app-scoped LLM paths → 404; no MLTK-owned `restmap` stanzas |
+| **A REST handler exists, but exposes no inference route** | `btool restmap list --app=Splunk_ML_Toolkit --debug` shows `[script:mltk]`; its route table serves agent/vector-store management only (see §2) |
 
 ### What a connection looks like (`aitk_llm_connection`)
 
@@ -71,11 +71,45 @@ Providers actually configured on the 6.1 stack:
 
 ---
 
-## 2. The uncomfortable finding
+## 2. The REST surface — corrected
 
-**There is no REST or Python inference API.** The Toolkit's LLM access is reachable only through
-its **search commands**. So "use the AI Toolkit" concretely means "run a search from our REST
-handler and parse the result", which is a different shape from our current direct HTTPS call.
+An earlier pass concluded "there is no REST API at all". **That was wrong**, and `btool` proved it.
+`| btool restmap list --app=Splunk_ML_Toolkit --debug` returns a real handler:
+
+```ini
+[script:mltk]
+match            = /mltk
+script           = util/rest_handler.py
+scripttype       = persist
+output_modes     = json
+passPayload      = true
+passSystemAuth   = true
+requireAuthentication = true
+python.required  = 3.13
+```
+
+The earlier `/services/mltk → 500` was a live handler rejecting an empty request, not an absent one.
+(The `admin/restmap` ACL view had reported zero MLTK-owned stanzas, which is why the first pass
+missed it — btool reading the conf files on disk is the reliable check.)
+
+**However, the route table is agent and vector-store *management*, not inference.** Probing the
+handler (it answers `Unknown REST endpoint: <name>` for invalid routes, so the table can be mapped):
+
+| Route | Result |
+|---|---|
+| `/mltk/agents` | exists — **DELETE** only (GET/POST/PUT → 405) |
+| `/mltk/vector_stores` | exists — GET/POST → 405 |
+| `/mltk/agent_templates` | exists — GET (500 on this stack) |
+| `llm`, `llm_connections`, `connections`, `models`, `chat`, `completions`, `inference`, `tools`, `prompts`, `usage`, `quotas`, … | `Unknown REST endpoint` |
+
+So the corrected finding is narrower but lands in the same place: **there is no REST inference or
+chat-completion endpoint**. LLM access is still reachable only through the `ai` / `aiagent` search
+commands, so "use the AI Toolkit" still means dispatching a search from our REST handler and
+parsing the result — a different shape from our current direct HTTPS call.
+
+One useful detail falls out of the handler definition: `python.required = 3.13` is on *their*
+handler. Calling `/mltk` over HTTP from our py3.9 handler would have been fine. It does not help
+here only because no inference route exists — not because of a Python constraint.
 
 That matters because our two calls are not chat-style summarisation. They send a multi-KB prompt
 and demand a **strict JSON document** back. Pushing that through SPL means quoting a prompt that
