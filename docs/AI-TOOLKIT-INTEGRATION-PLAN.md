@@ -434,14 +434,66 @@ A or on today's direct call, and offer the agent as the "onboard a whole source"
 who already have the Toolkit. Steal one thing from it immediately and unconditionally: **skills as
 the prompt store** (see §5).
 
-**Open, and needed before committing to F:**
+### F, tested on-premises — AI Toolkit 6.1 on .222, 2026-09-22
 
-- Can an app register skills **at install time**? `POST /mltk/agent_skills` is proven with a user
-  bearer token; whether it works from an install trigger under `system_authtoken`, and what ACL the
-  resulting skills carry, is untested.
-- Are skills available on-premises **without** SCC, or does the whole Launchpad surface including
-  skills sit behind tenant onboarding? If skills are local, §5 gets much more attractive; if not,
-  F's best idea is unavailable to exactly the customers who most need a local prompt store.
+Both open questions are now answered. `.222` was upgraded from AI Toolkit 5.6.4 to **6.1.0** on
+Splunk Enterprise 10.4.0, with **no Splunk Cloud Connect and no SCC tenant**.
+
+**Q: are skills available on-premises without SCC? YES.** All thirteen `aitk_*` KV collections are
+created on a bare Enterprise install (`aitk_agent_skills`, `aitk_agent_collection`,
+`aitk_llm_connection`, `aitk_mcp_collection`, `aitk_vector_store_collection`, …), and the routes
+answer:
+
+| Route | On-prem, no SCC |
+|---|---|
+| `GET /mltk/agent_skills` | 200 `{"skills":[],"count":0}` |
+| `POST /mltk/agent_skills` | **201 created** |
+| `DELETE /mltk/agent_skills/<name>` | 200 deleted |
+| `GET /mltk/agents` | 200, empty |
+| `GET /mltk/agent_templates` | 200, **empty** (Cloud has 2, so templates sync cloud-side) |
+| `GET /mltk/vector_stores` | 200, empty |
+
+So the skills surface is **local**, and §5's "skills as the prompt store" idea is available to
+on-premises customers. That was the more important of the two questions and it came back the way we
+wanted.
+
+**Q: can an app register skills at install time, under `system_authtoken`? NO.** Tested with a
+throwaway persistent handler (`passSystemAuth = true`) calling the route three times per token over
+raw `http.client`, so the transport could not confound it:
+
+| Token | `GET agent_skills` | `POST agent_skills` |
+|---|---|---|
+| `system_authtoken` | **500** `Internal error retrieving skills.` | **500** `Internal error creating skill.` (3/3) |
+| `session.authtoken` (admin) | 200 | **201 created (3/3)** |
+
+Same handler, same payload, same URL, same namespace: only the token differs. The system context
+cannot even *read* the skills route, so this is not a write restriction, the whole AI Toolkit
+surface is user-context-only. The created record explains why: it carries `created_by`,
+`updated_by` and `acl.sharing = "owner"`, and the system context has no user to own it. This is the
+same boundary `splunklib.ai` enforces explicitly with `_validate_agent_privileges` refusing
+`splunk-system-user` (§3C), so it is a deliberate product decision rather than a bug to work round.
+
+**Consequence for F:** skill registration cannot be an install action. It has to be a *user* action,
+so the realistic shape is a "Register CIMPlicity skills with the AI Toolkit" button on the settings
+page, run in the logged-in admin's context, idempotent, and degrading quietly when the Toolkit is
+absent. That is a worse story than ship-and-done but it is a perfectly normal one.
+
+**Two further findings while it was installed.**
+
+1. **`| ai` and `| aiagent` both dispatch on-prem without SCC.** They fail on *missing configuration*,
+   not on entitlement: `No default LLM configuration found` and `Agent 'nope' not found`. So the
+   command layer is not gated behind tenant onboarding; only Splunk Hosted Models and (per Splunk's
+   docs) the Agent Launchpad UI are.
+2. **A hand-written `aitk_llm_connection` KV row is not enough.** Inserting one returns 201 and the
+   row is readable, but `| ai connection=probe_dummy` still answers
+   `No configuration found for llm connection`. Exactly the trap already known for agents: the
+   Toolkit registers a connection through its own path (which also stores the secret), and the KV
+   record alone is inert.
+
+**Still open:** whether a bring-your-own-key `OpenAI` connection can be *created* on-premises
+without SCC, which decides whether option A works on-prem at all. Finding (2) means it cannot be
+settled over REST; it needs someone to open the Toolkit's connections UI on .222 and try. Two
+minutes of clicking, and worth doing before any commitment to A.
 
 ---
 
@@ -565,7 +617,9 @@ first and benefits the current direct-HTTPS path immediately.
    argument, so the ceiling is the customer's to raise in the Toolkit UI and ours only to detect.
    The `cim_mapping` reply came back at 1734 chars against a 44-field model; a wider model such as
    Network Traffic will be closer to the limit.
-4. **.222 is on 5.6.4** — upgrade to 6.1 needed for anything past bare `| ai`.
+4. ~~**.222 is on 5.6.4**~~ — **CLOSED. Upgraded to AI Toolkit 6.1.0 on 2026-09-22**, so `aiagent`,
+   `agentstatus` and the whole `aitk_*` surface are now available for development. The 5.6.4 app and
+   a tarball of it are kept on .222 under `/tmp` for rollback.
 5. **Splunkbase dependency question** — making the AI Toolkit *required* adds a dependency for
    every customer. It should stay optional, with direct-HTTPS as the default.
 6. **Who owns the connection** — still open, and §2b sharpened it. `| ai connection=<name>` resolved
