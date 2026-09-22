@@ -207,6 +207,74 @@ degrade around.
 
 ---
 
+## 2c. Where the AI Toolkit stores what
+
+Traced through the 6.1 source on .222 and confirmed empirically. **Nothing the REST API accepts is
+written to a `.conf` file.** It is all KV store documents plus `storage/passwords` entries.
+
+### The dispatch path
+
+`restmap.conf [script:mltk]` points at one generic dispatcher, `bin/util/rest_handler.py`. It takes
+the first path segment, imports `rest_handlers.<segment>` and calls the title-cased class:
+
+```
+POST /servicesNS/<user>/Splunk_ML_Toolkit/mltk/agent_skills
+  -> rest_handlers/agent_skills.py                      class AgentSkills.handle_post
+  -> util/searchinfo_util.searchinfo_from_request(with_admin_token=True, validate_token=True)
+  -> ai_commander.AICommanderUtil.check_capabilities_eligibility (edit_agent_connections)
+  -> connection_config_manager/skills/skill_manager.py   SkillManager.create_skill
+  -> util/ai_commander_util.upsert_single_document_into_kv_store
+  -> util/rest_url_util.make_kvstore_url(namespace="app")
+  -> POST /servicesNS/nobody/Splunk_ML_Toolkit/storage/collections/data/aitk_agent_skills
+```
+
+`namespace="app"` resolves the user to the literal `nobody`, so **every AI Toolkit object lands in
+the app namespace, not the caller's**. The write itself uses the caller's `session_key`
+(`with_admin_token` defaults to `False`), which is why identity matters throughout.
+
+### The map
+
+| What | Where | Notes |
+|---|---|---|
+| Skills | KV `aitk_agent_skills` | the row IS the skill, no side registration |
+| Agents | KV `aitk_agent_collection` | row alone is inert, runtime is cloud-provisioned |
+| LLM connections | KV `aitk_llm_connection` | row alone is inert |
+| LLM secrets | `storage/passwords` realm **`aitk_llm_secrets`**, id `aitk_llm_secrets:<connection name>` | `handle_secrets()` default realm is `mltk_llm_tokens` |
+| Knowledge-base secrets | `storage/passwords` realm `aitk_vector_db_creds` | |
+| MCP connections | KV `aitk_mcp_collection` | secret held by reference, eg `mcp_token:<name>` |
+| Vector stores | KV `aitk_vector_store_collection` | |
+| Managed skills (Splunk's own) | KV `aitk_managed_skills` + `aitk_managed_skills_sync_state` | synced from a cloud catalogue via SCC |
+| Chat threads, templates, tiers | `aitk_agent_chat_threads`, `aitk_agent_templates`, `aitk_agent_template_manifest`, `aitk_ai_tier_settings` | |
+
+All thirteen are declared in `default/collections.conf` as **bare stanzas with no field
+definitions**, so they are schemaless.
+
+### Two consequences worth holding on to
+
+1. **None of this is deployable as an app.** It is not in `etc/apps/*/local`, so it cannot be
+   shipped in a package, pushed by a deployment server, or captured by a conf backup. On a search
+   head cluster it travels by **KV store replication**, not conf replication. Anything CIMPlicity
+   wants present has to be *written at runtime* through one of the paths above.
+2. **The `acl` field is data, not enforcement.** The collections live in the `nobody` namespace, so
+   the `acl` object inside each document is applied only by the handler's own
+   `is_user_eligible_by_role` check. Anyone who can read the KV collection directly bypasses it
+   entirely: `GET /servicesNS/nobody/Splunk_ML_Toolkit/storage/collections/data/aitk_agent_skills`
+   returns every skill regardless of ownership. Do not treat AI Toolkit ACLs as a security boundary.
+
+### Confirmed empirically
+
+```
+POST /servicesNS/admin/Splunk_ML_Toolkit/mltk/agent_skills   -> 201
+GET  /servicesNS/nobody/…/storage/collections/data/aitk_agent_skills
+     -> 1 row, _user=nobody, _key=6ab30079fb3021fdc903608b
+        created_by=admin, acl.owner=admin, acl.sharing=owner
+GET  /servicesNS/admin/…/storage/collections/data/aitk_agent_skills   -> 0 rows
+GET  /servicesNS/nobody/search/storage/collections/data/aitk_agent_skills
+     -> 404, the collection is scoped to the Splunk_ML_Toolkit app
+```
+
+---
+
 ## 3. Options
 
 ### A. `| ai` via a dispatched search  — *recommended path*
@@ -457,26 +525,65 @@ So the skills surface is **local**, and §5's "skills as the prompt store" idea 
 on-premises customers. That was the more important of the two questions and it came back the way we
 wanted.
 
-**Q: can an app register skills at install time, under `system_authtoken`? NO.** Tested with a
-throwaway persistent handler (`passSystemAuth = true`) calling the route three times per token over
-raw `http.client`, so the transport could not confound it:
+**Q: can an app register skills at install time, under `system_authtoken`? YES, with two
+non-obvious requirements.** An earlier pass here concluded "no". That was wrong: it only tried the
+`nobody` and `admin` namespaces, and the `admin` one fails for a reason that has nothing to do with
+the token's privileges.
 
-| Token | `GET agent_skills` | `POST agent_skills` |
-|---|---|---|
-| `system_authtoken` | **500** `Internal error retrieving skills.` | **500** `Internal error creating skill.` (3/3) |
-| `session.authtoken` (admin) | 200 | **201 created (3/3)** |
+The gate is `util/searchinfo_util.validate_and_add_user_info`, which every skills route calls. It
+compares the **URL's namespace user** against the user the token resolves to and raises on a
+mismatch, which the handler turns into a generic 500:
 
-Same handler, same payload, same URL, same namespace: only the token differs. The system context
-cannot even *read* the skills route, so this is not a write restriction, the whole AI Toolkit
-surface is user-context-only. The created record explains why: it carries `created_by`,
-`updated_by` and `acl.sharing = "owner"`, and the system context has no user to own it. This is the
-same boundary `splunklib.ai` enforces explicitly with `_validate_agent_privileges` refusing
-`splunk-system-user` (§3C), so it is a deliberate product decision rather than a bug to work round.
+```python
+if username == 'nobody':          # validation skipped entirely
+    return
+...
+if token_username != username:
+    raise RuntimeError(f"Token validation failed: token belongs to user '{token_username}' "
+                       f"but searchinfo specifies user '{username}'")
+```
 
-**Consequence for F:** skill registration cannot be an install action. It has to be a *user* action,
-so the realistic shape is a "Register CIMPlicity skills with the AI Toolkit" button on the settings
-page, run in the logged-in admin's context, idempotent, and degrading quietly when the Toolkit is
-absent. That is a worse story than ship-and-done but it is a perfectly normal one.
+That explains all three outcomes exactly, with the system token:
+
+| Namespace | GET | POST | Why |
+|---|---|---|---|
+| `/servicesNS/admin/…` | 500 | 500 | `splunk-system-user != admin`, so validation raises |
+| `/servicesNS/nobody/…` | 200 | **403** `Missing required capabilities` | validation skipped, so `searchinfo['capabilities']` is never populated and the `edit_agent_connections` check fails |
+| `/servicesNS/splunk-system-user/…` | 200 | **201 created** | namespace user matches the token user, capabilities load, check passes |
+
+`handle_get` performs no capability check at all and still failed on the `admin` namespace, which is
+what isolates this to token validation rather than privilege.
+
+**But creating it is not enough: the skill is invisible.** `create_skill` hard-codes the ACL and
+**ignores any `acl` supplied in the POST body**:
+
+```python
+"acl": {"sharing": "owner", "app": "SPLUNK_ML_TOOLKIT", "owner": self.username,
+        "perms": {"read": [], "write": []}}
+```
+
+and `SkillManager.list_skills` filters every row through
+`CommonUtils.is_user_eligible_by_role(skill["acl"], "read")`, which returns `False` outright when
+`sharing == "owner"` and the caller is not the owner. So a skill created by `splunk-system-user`
+sits in KV and **no real user can list, read or delete it**. Verified: admin saw `count: 0` while
+the row was plainly present in the collection.
+
+**Both ways of fixing the ACL work, and either completes the recipe:**
+
+| Route | Result |
+|---|---|
+| **A (supported)** `POST /servicesNS/splunk-system-user/…/agent_skills`, then `PUT …/agent_skills/<name>` with `{"name": …, "acl": {"sharing": "global", "perms": {"read": ["*"]}}}` | 201 then 200, then **visible to admin** |
+| **B (direct)** `POST /servicesNS/nobody/…/storage/collections/data/aitk_agent_skills` with the open ACL inline | 201, **visible to admin** |
+
+Route B works because, unlike agents and LLM connections, **a skill has no side registration**: the
+handler reads the KV collection directly, so the row *is* the skill. `acl` is also in the handler's
+`UPDATABLE_FIELDS`, which is why route A's `PUT` is allowed (note it requires `name` in the body).
+
+**Consequence for F: install-time registration is viable after all.** An `app.conf [triggers]` hook
+in the `autoregister.py` mould can publish CIMPlicity's skills on install, exactly like the MCP tool
+registration we already do. It must use the `splunk-system-user` namespace and must set a
+non-`owner` ACL, or the skills exist but are invisible. A settings-page button remains worth having
+as the repair path, but it is no longer the only option.
 
 **Two further findings while it was installed.**
 
@@ -487,8 +594,15 @@ absent. That is a worse story than ship-and-done but it is a perfectly normal on
 2. **A hand-written `aitk_llm_connection` KV row is not enough.** Inserting one returns 201 and the
    row is readable, but `| ai connection=probe_dummy` still answers
    `No configuration found for llm connection`. Exactly the trap already known for agents: the
-   Toolkit registers a connection through its own path (which also stores the secret), and the KV
-   record alone is inert.
+   Toolkit registers a connection through its own path (which also stores the secret in
+   `storage/passwords` under realm `aitk_llm_secrets`, see §2c), and the KV record alone is inert.
+   **Skills are the exception**: they have no side registration, so a direct KV write does work.
+3. **Installing 6.1 on-prem starts a recurring error loop in `mlspl.log`.** A modular input tries to
+   sync Splunk's managed-skills catalogue every ~12 minutes, retries six times with backoff and
+   gives up with `Managed Skills synchronization failed after 6 attempts: Splunk Cloud Connect app
+   is not installed or endpoint not found`. It is harmless (it logs
+   `the existing KV Store catalog is retained`) but it is permanent log noise on any on-premises
+   install without SCC, and worth knowing before recommending the Toolkit to a customer.
 
 **Still open:** whether a bring-your-own-key `OpenAI` connection can be *created* on-premises
 without SCC, which decides whether option A works on-prem at all. Finding (2) means it cannot be
