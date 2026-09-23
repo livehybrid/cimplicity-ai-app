@@ -1,9 +1,11 @@
 # AI Toolkit integration + prompt externalisation — investigation and plan
 
-**Status:** investigation complete, **Phase 0 spike run and passed**, and **skill self-registration
-built and verified** (§3F, [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md)). The LLM-backend decision
-itself is still open.
-**Date:** 2026-09-21, updated 2026-09-23.
+**Status:** investigation complete; **Phases 0, 1 and 2 built and verified**. Skill
+self-registration ships (§3F, [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md)), the LLM call is behind
+one seam (`lib/llm_client.py`), and the AI Toolkit is a selectable backend **defaulting to direct**,
+so nothing changes for an existing install. What remains open is whether to ever make it the
+default, and §7 below is the evidence against.
+**Date:** 2026-09-21, updated 2026-09-24.
 
 Two questions were asked:
 
@@ -810,3 +812,70 @@ first and benefits the current direct-HTTPS path immediately.
    with no separation between instruction and data. A crafted log line can therefore steer the
    model. The SDK's `create_structured_prompt` fence is about fifteen lines to reimplement and
    should be adopted whichever backend wins. Worth raising as its own issue.
+
+---
+
+## 7. Phase 2 as built, and what running it taught
+
+`ai_configuration.backend` selects `direct` (default) or `splunk_ai_toolkit`.
+`lib/llm_client.complete()` is the single call site; `lib/llm_toolkit.py` builds and reads the
+`| ai` call and `lib/splunk_search.py` runs it as a oneshot search.
+
+### Measured end to end through the app's own endpoints, on .222
+
+Same events, same handlers, only the backend changed.
+
+| Endpoint | Direct (`claude-opus-5`) | AI Toolkit (`\| ai` → `gpt-5-mini`) |
+|---|---|---|
+| `cim_mapping` | **15.5 s**, 4 mappings | **98.8 s**, 4 mappings |
+| `ai_detection` | **59.7 s**, 8 fields from the LLM | **179.6 s**, and it FAILED (fell back to local regexes) |
+
+The Toolkit route is roughly **6x slower** on the call that worked. Some of that is gpt-5-mini
+being a reasoning model rather than the transport, but the fixed cost of dispatching a search is
+real and was ~16 s on the Cloud stack (§2b).
+
+**SPL length is not a constraint.** The `cim_mapping` prompt produced an **11,832-character search
+string** and ran fine, so brace-doubling the whole prompt and inlining it is viable at our sizes;
+the field-passing trick from §2b is not required, though it remains the tidier option.
+
+### The failure mode that matters most
+
+**`| ai` reports LLM-level failures by putting the error message in `ai_result_1` and returning a
+successful search.** Nothing is flagged: the row looks exactly like an answer. Parse it and you get
+an error string where JSON should be.
+
+Found live. `ai_detection` silently fell back to local regexes, and the reply turned out to be:
+
+```
+Empty response content received from the server.
+```
+
+which is the AI Toolkit's own wording for *the model returned nothing*. Cause: the connection's
+`llm_params.max_tokens = 2000` is shared between gpt-5-mini's reasoning tokens and its output, and
+the extraction task exhausts it. The bigger `cim_mapping` prompt succeeded, so this is an output
+budget problem, not a prompt-size one.
+
+`lib/llm_toolkit.py` now rejects the Toolkit's own `LLM_EXCEPTION_LIST` (lifted verbatim from
+`bin/ai_commander/constants.py`) before returning content. **Any caller of `| ai` needs this**, and
+nothing in the Toolkit's documentation says so.
+
+### Why direct stays the default
+
+1. **Roughly 6x the latency** on an interactive call, measured.
+2. **`max_tokens` is the customer's to set and easy to get wrong.** 2000 is the default on every
+   connection seen, `| ai` cannot override it, and on a reasoning model it silently yields an empty
+   reply rather than an error.
+3. **Connections are per-user.** `default_users` gates visibility and the default-connection mapping
+   is per user, so the feature works only for users who personally have one. Our handlers must
+   dispatch as the invoking user, which they now do.
+4. **The model list is capped by the customer's PSC**, not by them (§3F risk 5b).
+
+None of that argues against *offering* it: a customer who wants one managed key, or Splunk Hosted
+Models on Cloud, can now have it, and the seam cost almost nothing. It argues against defaulting to
+it.
+
+### Still untested
+
+`| aiagent` and option F's agent half, which need Agent Launchpad and therefore SCC on-premises.
+Whether raising a connection's `max_tokens` past 2000 makes `ai_detection` succeed through `| ai`
+is the obvious next check and needs a connection edit in the Toolkit UI.

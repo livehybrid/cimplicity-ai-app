@@ -18,6 +18,10 @@ Welcome to the CiMplicity Splunk App documentation! This directory contains all 
 - **[CIM Mapping Endpoint](CIM_MAPPING_ENDPOINT.md)** - AI-assisted CIM mapping REST endpoint (dynamic CIM model loading)
 - **[MCP Tools](MCP_TOOLS.md)** - Splunk MCP Server tool registration and per-tool contracts
 
+### AI Configuration
+- **[LLM Backends](LLM_BACKENDS.md)** - Direct API key vs the Splunk AI Toolkit, and the four `| ai` traps
+- **[AI Toolkit Skills](AI_TOOLKIT_SKILLS.md)** - the skills the app registers with Agent Launchpad on install
+
 ### For Developers
 - **Quick Start**: For immediate development setup
 - **Build Guide**: Deep dive into build processes, CI/CD, and troubleshooting
