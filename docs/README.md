@@ -19,6 +19,7 @@ Welcome to the CiMplicity Splunk App documentation! This directory contains all 
 - **[MCP Tools](MCP_TOOLS.md)** - Splunk MCP Server tool registration and per-tool contracts
 
 ### AI Configuration
+- **[Prompt Customisation](PROMPT_CUSTOMISATION.md)** - change the LLM guidance per deployment, without forking the app
 - **[LLM Backends](LLM_BACKENDS.md)** - Direct API key vs the Splunk AI Toolkit, and the four `| ai` traps
 - **[AI Toolkit Skills](AI_TOOLKIT_SKILLS.md)** - the skills the app registers with Agent Launchpad on install
 

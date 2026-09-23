@@ -775,6 +775,23 @@ fall back to the shipped default and log loudly, rather than sending a prompt wi
 Prompt externalisation is **independent of the AI Toolkit decision** and lower risk. It can ship
 first and benefits the current direct-HTTPS path immediately.
 
+### BUILT, 2026-09-24
+
+Exactly as designed above: `default/cim-plicity_prompts.conf` with the guidance, the output
+contract kept in `lib/prompts.py` and always appended, a `README/*.conf.spec` for AppInspect and a
+`[triggers] reload.cim-plicity_prompts = simple` entry added by CI. Substitution replaces only the
+known placeholders by name rather than using `str.format()`, so pasted example JSON cannot break
+it. Guidance missing a required placeholder falls back to the shipped default with an error naming
+it.
+
+Verified live on .222: a `local/` override carrying house rules produced
+`sourcetype = acme:badgeaccess` and a field renamed `acme_badge_id`, and an override missing
+`{sample_data}` fell back rather than being sent. User guide in
+[PROMPT_CUSTOMISATION.md](PROMPT_CUSTOMISATION.md).
+
+**Not done:** the UCC settings-page textarea noted under *Alternatives*, which remains a sensible
+later addition on top of the conf file rather than a replacement for it.
+
 ---
 
 ## 6. Risks and open questions
