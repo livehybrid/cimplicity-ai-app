@@ -29,6 +29,7 @@ from solnlib import conf_manager
 import ai_settings
 import llm_client
 import llm_response
+import splunk_search
 import requests
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
@@ -70,6 +71,23 @@ class AiDetection(PersistentServerConnectionApplication):
             logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
         except Exception:
             logging.getLogger().setLevel(logging.INFO)
+
+    def _search_runner(self):
+        """A oneshot-search runner for the AI Toolkit backend, or None.
+
+        Returns None rather than raising when there is no user token: the direct
+        backend does not need one, and llm_client only asks for it when the
+        Toolkit backend is selected.
+        """
+        key = getattr(self, "user_session_key", None)
+        if not key:
+            return None
+        try:
+            return splunk_search.make_runner(key, getattr(self, "user_name", None),
+                                             app=ADDON_NAME)
+        except Exception as exc:  # noqa: BLE001 - absence is reported by llm_client
+            logging.warning("Could not build a search runner: %s", exc)
+            return None
 
     def get_ai_secret(self):
         """
@@ -128,7 +146,8 @@ class AiDetection(PersistentServerConnectionApplication):
             # one implementation (and one timeout/max_tokens policy).
             settings = dict(self.get_ai_settings() or {})
             settings["api_key"] = api_key
-            content = llm_client.complete(settings, prompt, title="Cim-plicity")
+            content = llm_client.complete(settings, prompt, title="Cim-plicity",
+                                          search=self._search_runner())
             # Models wrap the object in a markdown fence or a line of preamble
             # even when asked not to. Returning None here puts the caller on the
             # local fallback rather than raising.
@@ -330,7 +349,11 @@ class AiDetection(PersistentServerConnectionApplication):
         if not self.system_session_key:
             logging.error("No session key provided")
             return {'payload': {'error': 'No session key provided'}, 'status': 401}
-        self.user_name = (inbound_payload.get('session') or {}).get('user')
+        session = inbound_payload.get('session') or {}
+        self.user_name = session.get('user')
+        # The AI Toolkit backend dispatches a search, and Toolkit connections are
+        # per-user, so it needs the CALLER'S token rather than the system one.
+        self.user_session_key = session.get('authtoken')
         self.apply_log_level()
         try:
             posted_data = json.loads(inbound_payload.get('payload', '{}'))

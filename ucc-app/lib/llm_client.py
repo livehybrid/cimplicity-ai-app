@@ -33,6 +33,8 @@ import logging
 
 import requests
 
+import llm_toolkit
+
 DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 
@@ -45,6 +47,11 @@ DEFAULT_TIMEOUT = (10, 120)
 DEFAULT_MAX_TOKENS = 4000
 
 REFERER = "https://github.com/livehybrid/cimplicity-ai-onboarding"
+
+# ai_configuration.backend. "direct" keeps today's behaviour and is the default,
+# so an existing install is untouched by the Toolkit work landing.
+BACKEND_DIRECT = "direct"
+BACKEND_TOOLKIT = "splunk_ai_toolkit"
 
 
 class LlmError(Exception):
@@ -69,20 +76,27 @@ def _int_or(value, default):
 
 
 def complete(settings, prompt, title, timeout=DEFAULT_TIMEOUT,
-             max_tokens=None, post=None):
+             max_tokens=None, post=None, search=None):
     """Send a single-turn completion and return the reply content as a string.
 
     settings: the ai_configuration stanza (api_key, api_endpoint, model, and
-        optionally max_tokens). Only api_key is required; the rest have defaults
-        matching what the handlers shipped with.
+        optionally max_tokens and backend). For the direct backend only api_key
+        is required; the rest have defaults matching what the handlers shipped.
     title: the X-Title sent to the provider, so usage is attributable per caller.
     post: injected for tests; defaults to requests.post.
+    search: `search(spl) -> (rows, messages)`, required only by the AI Toolkit
+        backend. Injected because it needs the CALLER'S session key: Toolkit
+        connections are per-user and the system key cannot see them.
 
     Raises LlmError rather than returning a sentinel, so a caller cannot mistake
     a failure for an empty answer.
     """
     post = post or requests.post
     settings = settings or {}
+
+    backend = (settings.get("backend") or BACKEND_DIRECT).strip().lower()
+    if backend == BACKEND_TOOLKIT:
+        return _complete_via_toolkit(settings, prompt, search)
 
     api_key = settings.get("api_key")
     if not api_key:
@@ -139,3 +153,18 @@ def complete(settings, prompt, title, timeout=DEFAULT_TIMEOUT,
 
     logging.info("LLM reply received (%d chars)", len(content))
     return content
+
+
+def _complete_via_toolkit(settings, prompt, search):
+    """Delegate to lib/llm_toolkit, remapping its errors onto LlmError.
+
+    Kept behind the same function so the handlers have exactly one call site and
+    one set of failure reasons whichever backend is selected.
+    """
+    if search is None:
+        raise LlmError("not_configured",
+                       "the Splunk AI Toolkit backend needs a search runner")
+    try:
+        return llm_toolkit.complete(settings, prompt, search)
+    except llm_toolkit.ToolkitError as exc:
+        raise LlmError(exc.reason, exc.detail)

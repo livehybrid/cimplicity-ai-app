@@ -188,3 +188,63 @@ def test_llmerror_carries_a_reason_the_callers_can_map():
     err = llm_client.LlmError("timeout", "read timed out")
     assert err.reason == "timeout"
     assert "read timed out" in str(err)
+
+
+# --- backend selection (Phase 2) -------------------------------------------
+
+def test_direct_is_the_default_backend():
+    # An existing install must be untouched by the Toolkit work landing.
+    sink = {}
+    llm_client.complete(SETTINGS, "hello", title="T", post=_post(FakeResponse(_ok()), sink))
+    assert sink["url"] == SETTINGS["api_endpoint"]      # went out over HTTPS
+
+
+def test_an_unknown_backend_value_falls_back_to_direct():
+    sink = {}
+    llm_client.complete(dict(SETTINGS, backend="nonsense"), "hello", title="T",
+                        post=_post(FakeResponse(_ok()), sink))
+    assert sink["url"] == SETTINGS["api_endpoint"]
+
+
+def test_the_toolkit_backend_dispatches_a_search_and_never_calls_out():
+    def post(**kwargs):
+        raise AssertionError("must not reach the provider")
+
+    seen = []
+    def search(spl):
+        seen.append(spl)
+        return [{"ai_result_1": '{"ok": 1}'}], []
+
+    out = llm_client.complete(dict(SETTINGS, backend="splunk_ai_toolkit"),
+                              "hello", title="T", post=post, search=search)
+    assert out == '{"ok": 1}'
+    assert seen and seen[0].startswith("| makeresults | ai ")
+
+
+def test_the_toolkit_backend_needs_no_api_key():
+    # The whole point: the customer's key lives in the AI Toolkit instead.
+    out = llm_client.complete({"backend": "splunk_ai_toolkit"}, "hello", title="T",
+                              search=lambda spl: ([{"ai_result_1": "x"}], []))
+    assert out == "x"
+
+
+def test_the_toolkit_backend_without_a_search_runner_is_not_configured():
+    with pytest.raises(llm_client.LlmError) as exc:
+        llm_client.complete({"backend": "splunk_ai_toolkit"}, "hello", title="T")
+    assert exc.value.reason == "not_configured"
+
+
+def test_toolkit_errors_are_remapped_onto_llmerror_reasons():
+    # So both handlers keep one set of reasons whichever backend is selected.
+    msg = "Error in 'ai' command: No default LLM configuration found."
+    with pytest.raises(llm_client.LlmError) as exc:
+        llm_client.complete({"backend": "splunk_ai_toolkit"}, "hello", title="T",
+                            search=lambda spl: ([], [msg]))
+    assert exc.value.reason == "not_configured"
+
+
+def test_backend_selection_is_case_and_space_tolerant():
+    for value in ("Splunk_AI_Toolkit", "  splunk_ai_toolkit  ", "SPLUNK_AI_TOOLKIT"):
+        out = llm_client.complete({"backend": value}, "hello", title="T",
+                                  search=lambda spl: ([{"ai_result_1": "y"}], []))
+        assert out == "y", value

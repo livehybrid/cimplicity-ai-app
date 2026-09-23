@@ -42,6 +42,7 @@ from solnlib import conf_manager
 import ai_settings
 import llm_client
 import llm_response
+import splunk_search
 
 ADDON_NAME = 'cim-plicity'
 
@@ -103,6 +104,23 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         except Exception:
             logging.getLogger().setLevel(logging.INFO)
 
+    def _search_runner(self):
+        """A oneshot-search runner for the AI Toolkit backend, or None.
+
+        Returns None rather than raising when there is no user token: the direct
+        backend does not need one, and llm_client only asks for it when the
+        Toolkit backend is selected.
+        """
+        key = getattr(self, "user_session_key", None)
+        if not key:
+            return None
+        try:
+            return splunk_search.make_runner(key, getattr(self, "user_name", None),
+                                             app=ADDON_NAME)
+        except Exception as exc:  # noqa: BLE001 - absence is reported by llm_client
+            logging.warning("Could not build a search runner: %s", exc)
+            return None
+
     def get_ai_secret(self):
         try:
             return self.get_ai_settings().get("api_key")
@@ -155,7 +173,8 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             settings["api_key"] = api_key
             logging.info(f"Requesting CIM mapping for model: {cim_model}")
             content = llm_client.complete(settings, prompt,
-                                          title="Cim-plicity-CIM-Mapping")
+                                          title="Cim-plicity-CIM-Mapping",
+                                          search=self._search_runner())
 
             # The prompt asks for a direct JSON array, but models wrap it: in a
             # markdown fence, under a single key (response_format=json_object
@@ -182,7 +201,12 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         try:
             inbound_payload = json.loads(in_string)
             self.system_session_key = inbound_payload.get('system_authtoken')
-            
+            session = inbound_payload.get('session') or {}
+            self.user_name = session.get('user')
+            # The AI Toolkit backend dispatches a search, and Toolkit connections
+            # are per-user, so it needs the CALLER'S token, not the system one.
+            self.user_session_key = session.get('authtoken')
+
             if not self.system_session_key:
                 return {'payload': {'error': 'No session key provided'}, 'status': 401}
 
