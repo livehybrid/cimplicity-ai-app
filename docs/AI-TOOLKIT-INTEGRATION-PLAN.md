@@ -1,7 +1,9 @@
 # AI Toolkit integration + prompt externalisation — investigation and plan
 
-**Status:** investigation complete, **Phase 0 spike run and passed**. Nothing else implemented.
-**Date:** 2026-09-21.
+**Status:** investigation complete, **Phase 0 spike run and passed**, and **skill self-registration
+built and verified** (§3F, [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md)). The LLM-backend decision
+itself is still open.
+**Date:** 2026-09-21, updated 2026-09-23.
 
 Two questions were asked:
 
@@ -582,8 +584,15 @@ handler reads the KV collection directly, so the row *is* the skill. `acl` is al
 **Consequence for F: install-time registration is viable after all.** An `app.conf [triggers]` hook
 in the `autoregister.py` mould can publish CIMPlicity's skills on install, exactly like the MCP tool
 registration we already do. It must use the `splunk-system-user` namespace and must set a
-non-`owner` ACL, or the skills exist but are invisible. A settings-page button remains worth having
-as the repair path, but it is no longer the only option.
+non-`owner` ACL, or the skills exist but are invisible.
+
+**BUILT, 2026-09-23.** `ucc-app/lib/aitk_skills.py` plus a second leaf on `autoregister.py`, riding
+the existing `reload.tools` trigger so no new wiring was needed, with
+`POST /services/cim-plicity/register_skills` as the re-run path for a customer who installs the
+Toolkit after the app. Three skills ship: `CIMPlicityFieldExtraction`, `CIMPlicityCIMMapping`,
+`CIMPlicityOnboardingWorkflow`. Verified end to end on .222 (201 created, 200 made visible, listed
+by a real user, re-run 409/200 with no duplicates). 12 tests in `tests/test_aitk_skills.py`.
+Details in [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md).
 
 **Two further findings while it was installed.**
 
