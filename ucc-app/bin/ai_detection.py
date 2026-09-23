@@ -29,6 +29,7 @@ from solnlib import conf_manager
 import ai_settings
 import llm_client
 import llm_response
+import prompts
 import splunk_search
 import requests
 
@@ -99,47 +100,25 @@ class AiDetection(PersistentServerConnectionApplication):
             logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
 
-    def call_openrouter(self, api_key, sample_data, description=None):
-        base_prompt = f"""
-        You are a Splunk expert tasked with analyzing a log sample to suggest field extractions.
-        The log sample is:
-        ---
-        {sample_data}
-        ---"""
-        if description:
-            base_prompt += f"""
+    def _prompt_guidance(self, name):
+        """The customer's prompt guidance from cim-plicity_prompts.conf, or None."""
+        def read_stanza(stanza):
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            return cfm.get_conf("cim-plicity_prompts").get(stanza)
+        return prompts.read_configured(read_stanza, name)
 
-        Additional context provided by the user:
-        {description}
-        """
-        prompt = base_prompt + """
-        Your instructions are:
-        1.  Suggest an appropriate Splunk sourcetype for this data (e.g., 'json', 'json_no_timestamp', 'syslog', 'custom_log') or something appropriate to what you think the data is.
-        2.  Identify key fields to be extracted from the log sample.
-        3.  For each field, provide a robust PCRE-based regex pattern that can be used for extraction in Splunk (props.conf). The regex should use named capture groups (e.g., '(?<field_name>...)') and the regex must extract data based on the entire log line and only once!
-        4.  In addition, provide a single regex pattern that can be used to extract all the fields from the log line in one go.
-        5.  Analyze the log data for timestamp patterns and provide:
-           - TIME_FORMAT: The Python datetime format string (e.g., '%Y-%m-%dT%H:%M:%S', '%b %d %H:%M:%S', '%d/%b/%Y:%H:%M:%S %z')
-           - TIME_PREFIX: Any prefix that appears before the timestamp (e.g., '[', '(', or empty string)
-           - MAX_TIMESTAMP_LOOKAHEAD: Maximum characters to look ahead for timestamp (default 25, increase if needed for complex formats)
-        
-        Return your response as a single, valid JSON object with the following EXACT structure:
-        {
-          "sourcetype": "string",
-          "fields": [
-            {
-              "name": "field_name",
-              "regex": "regex_pattern_with_named_groups"
-            }
-          ],
-          "combined_regex": "single_regex_to_extract_all_fields",
-          "time_format": "python_datetime_format_string",
-          "time_prefix": "prefix_before_timestamp_or_empty",
-          "max_timestamp_lookahead": "number_as_string"
-        }
-        
-        Do not include any explanatory text outside of the JSON object.
-        """
+    def call_openrouter(self, api_key, sample_data, description=None):
+        # The guidance half of this prompt is customer-editable
+        # (default/cim-plicity_prompts.conf); the JSON output contract is not and
+        # is appended by prompts.render. See lib/prompts.py.
+        description_block = ""
+        if description:
+            description_block = ("Additional context provided by the user:\n%s"
+                                 % description)
+        prompt = prompts.render("ai_detection",
+                                {"sample_data": sample_data,
+                                 "description_block": description_block},
+                                configured=self._prompt_guidance("ai_detection"))
         try:
             logging.info("Sending request to OpenRouter...")
             # The transport lives in lib/llm_client.py so both AI handlers share

@@ -42,6 +42,7 @@ from solnlib import conf_manager
 import ai_settings
 import llm_client
 import llm_response
+import prompts
 import splunk_search
 
 ADDON_NAME = 'cim-plicity'
@@ -121,6 +122,13 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             logging.warning("Could not build a search runner: %s", exc)
             return None
 
+    def _prompt_guidance(self, name):
+        """The customer's prompt guidance from cim-plicity_prompts.conf, or None."""
+        def read_stanza(stanza):
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            return cfm.get_conf("cim-plicity_prompts").get(stanza)
+        return prompts.read_configured(read_stanza, name)
+
     def get_ai_secret(self):
         try:
             return self.get_ai_settings().get("api_key")
@@ -134,38 +142,15 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         if not available_cim_fields:
             return {"error": f"Invalid CIM model specified: {cim_model}"}
 
-        prompt = f"""
-        You are a Splunk CIM expert. Your task is to map a list of extracted fields from a log file to the standard fields of a specified Splunk Common Information Model (CIM).
-
-        **CIM Data Model:**
-        {cim_model}
-
-        **Available CIM Fields for this model:**
-        {json.dumps(available_cim_fields, indent=2)}
-
-        **Extracted Fields from the log data:**
-        {json.dumps(extracted_fields, indent=2)}
-
-        **Your Instructions:**
-        1.  Analyze the **Extracted Fields** provided. Pay attention to the field names and their sample values.
-        2.  For each extracted field, find the best matching standard field from the **Available CIM Fields**.
-        3.  You can map multiple extracted fields to the same CIM field if appropriate (e.g., 'ip' and 'client_ip' could both map to 'src_ip').
-        4.  If an extracted field does not have a clear and logical mapping to any available CIM field, do not include it in your response.
-        5.  For each successful mapping, provide a confidence score between 0.0 and 1.0, where 1.0 represents a perfect match. The score should reflect your certainty in the mapping based on field names and values.
-        6.  Provide a brief "reasoning" for each mapping explaining why you chose it (e.g., "Field name 'user_ip' is a clear synonym for 'src_ip'").
-
-        **Output Format:**
-        Return your response as a single, valid JSON array of objects. Each object in the array represents a single mapping and must have the following structure:
-        {{
-          "field": "The name of the original extracted field",
-          "cimField": "The name of the standard CIM field it maps to",
-          "confidence": A float between 0.0 and 1.0,
-          "reasoning": "A brief explanation for the mapping"
-        }}
-
-        Do not include any explanatory text outside of the final JSON array.
-        """
-
+        # The guidance half of this prompt is customer-editable
+        # (default/cim-plicity_prompts.conf); the JSON output contract is not and
+        # is appended by prompts.render. See lib/prompts.py.
+        prompt = prompts.render(
+            "cim_mapping",
+            {"cim_model": cim_model,
+             "available_cim_fields": json.dumps(available_cim_fields, indent=2),
+             "extracted_fields": json.dumps(extracted_fields, indent=2)},
+            configured=self._prompt_guidance("cim_mapping"))
         try:
             # The transport lives in lib/llm_client.py so both AI handlers share
             # one implementation (and one timeout/max_tokens policy).

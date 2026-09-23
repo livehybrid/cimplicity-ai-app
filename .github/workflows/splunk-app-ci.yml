@@ -139,6 +139,14 @@ jobs:
             if ! grep -q "^reload\.cim-plicity_settings" default/app.conf; then
               sed -i '/^\[triggers\]/a reload.cim-plicity_settings = simple' default/app.conf
             fi
+            # Prompt guidance (default/cim-plicity_prompts.conf, overridden in
+            # local/). `simple` is enough: the handlers read it per request via
+            # conf_manager, so a reload is all that is needed for an edit to take
+            # effect without a restart. Also satisfies AppInspect's
+            # check_reload_trigger_for_all_custom_confs for this conf.
+            if [ -f "default/cim-plicity_prompts.conf" ] && ! grep -q "^reload\.cim-plicity_prompts" default/app.conf; then
+              sed -i '/^\[triggers\]/a reload.cim-plicity_prompts = simple' default/app.conf
+            fi
           fi
 
 
