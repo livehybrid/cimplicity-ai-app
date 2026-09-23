@@ -25,7 +25,14 @@
                                         "label": "Splunk AI Toolkit"
                                     }
                                 ]
-                            }
+                            },
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Backend must be either 'direct' or 'splunk_ai_toolkit'",
+                                    "pattern": "^(direct|splunk_ai_toolkit)$"
+                                }
+                            ]
                         },
                         {
                             "type": "text",
