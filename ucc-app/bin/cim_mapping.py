@@ -40,9 +40,19 @@ if _bindir not in sys.path:
 
 from solnlib import conf_manager
 import ai_settings
+import llm_client
 import llm_response
 
 ADDON_NAME = 'cim-plicity'
+
+# llm_client.LlmError reasons -> the message the UI shows. Kept verbatim from the
+# previous per-exception handlers so the front end sees no change.
+_LLM_ERRORS = {
+    "not_configured": "AI service is not configured.",
+    "timeout": "Request to AI service timed out.",
+    "transport": "Failed to communicate with AI service.",
+    "bad_response": "Failed to parse LLM response",
+}
 
 # Setup logging (level set from the [logging] stanza per request, default INFO)
 logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}_cim_mapping.log'])
@@ -139,33 +149,14 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         """
 
         try:
-            # Use the configured endpoint and model, matching ai_detection.py;
-            # shipped defaults are the same OpenRouter URL and model.
-            ai_conf = self.get_ai_settings()
-            api_endpoint = ai_conf.get("api_endpoint") or "https://openrouter.ai/api/v1/chat/completions"
-            model = ai_conf.get("model") or "google/gemini-2.0-flash-001"
-            logging.info(f"Sending CIM mapping request to {api_endpoint} (model {model}) for CIM model: {cim_model}")
-            response = requests.post(
-                url=api_endpoint,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "X-Title": "Cim-plicity-CIM-Mapping",
-                    "HTTP-Referer": "https://github.com/livehybrid/cimplicity-ai-onboarding",
-                    "Content-Type": "application/json"
-                },
-                data=json.dumps({
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"}
-                }),
-                timeout=60
-            )
-            response.raise_for_status()
+            # The transport lives in lib/llm_client.py so both AI handlers share
+            # one implementation (and one timeout/max_tokens policy).
+            settings = dict(self.get_ai_settings() or {})
+            settings["api_key"] = api_key
+            logging.info(f"Requesting CIM mapping for model: {cim_model}")
+            content = llm_client.complete(settings, prompt,
+                                          title="Cim-plicity-CIM-Mapping")
 
-            # The response from the LLM might be a JSON object with a key, let's assume 'suggestions'
-            content = response.json()['choices'][0]['message']['content']
-            logging.info(f"Received CIM mapping response ({len(content)} chars)")
-            
             # The prompt asks for a direct JSON array, but models wrap it: in a
             # markdown fence, under a single key (response_format=json_object
             # forbids a top-level array), or behind a line of preamble. Parsing
@@ -177,14 +168,13 @@ class CimMappingHandler(PersistentServerConnectionApplication):
                 return {"error": "Failed to parse LLM response"}
             return suggestions
 
-        except requests.exceptions.Timeout:
-            logging.error("Request to OpenRouter timed out.")
-            return {"error": "Request to AI service timed out."}
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling OpenRouter: {e}")
-            return {"error": "Failed to communicate with AI service."}
+        except llm_client.LlmError as e:
+            # cim_mapping has no local fallback, so each failure becomes a
+            # distinct user-facing message rather than a silent empty result.
+            logging.error(f"CIM mapping LLM call failed ({e.reason}): {e.detail}")
+            return {"error": _LLM_ERRORS.get(e.reason, "An unexpected error occurred.")}
         except Exception as e:
-            logging.error(f"An unexpected error occurred during OpenRouter call: {e}")
+            logging.error(f"An unexpected error occurred during the LLM call: {e}")
             return {"error": "An unexpected error occurred."}
 
     def handle(self, in_string):

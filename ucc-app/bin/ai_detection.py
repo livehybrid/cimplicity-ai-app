@@ -27,6 +27,7 @@ sys.path = new_paths
 import logging
 from solnlib import conf_manager
 import ai_settings
+import llm_client
 import llm_response
 import requests
 
@@ -123,46 +124,22 @@ class AiDetection(PersistentServerConnectionApplication):
         """
         try:
             logging.info("Sending request to OpenRouter...")
-            # Fetch endpoint and model from config, with working defaults
-            ai_conf = self.get_ai_settings()
-            api_endpoint = ai_conf.get("api_endpoint") or 'https://openrouter.ai/api/v1/chat/completions'
-            model = ai_conf.get("model") or 'anthropic/claude-3-5-sonnet-20241022'
-            logging.info(f"Using model: {model}")
-
-            response = requests.post(
-                url=api_endpoint,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "X-Title": "Cim-plicity",
-                    "HTTP-Referer": "https://github.com/livehybrid/cimplicity-ai-onboarding",
-                    "Content-Type": "application/json"
-                },
-                data=json.dumps({
-                    "model": model,  # Use the fetched model
-                    "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"}
-                }),
-                timeout=60
-            )
-            response.raise_for_status()
-            content = response.json()['choices'][0]['message']['content']
-            logging.info(
-                "Received successful response from OpenRouter (%d chars)."
-                % (len(content) if isinstance(content, str) else 0)
-            )
+            # The transport lives in lib/llm_client.py so both AI handlers share
+            # one implementation (and one timeout/max_tokens policy).
+            settings = dict(self.get_ai_settings() or {})
+            settings["api_key"] = api_key
+            content = llm_client.complete(settings, prompt, title="Cim-plicity")
             # Models wrap the object in a markdown fence or a line of preamble
-            # even when asked not to, and a refused or truncated completion
-            # arrives as null content. Returning None here puts the caller on
-            # the local fallback rather than raising.
+            # even when asked not to. Returning None here puts the caller on the
+            # local fallback rather than raising.
             return llm_response.parse_json(content)
-        except requests.exceptions.Timeout:
-            logging.error("Request to OpenRouter timed out.")
-            return None
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling OpenRouter: {e}")
+        except llm_client.LlmError as e:
+            # Every failure mode is a fallback, not an error: ai_detection has a
+            # local regex path and degrades to it rather than failing the request.
+            logging.error(f"AI detection LLM call failed ({e.reason}): {e.detail}")
             return None
         except Exception as e:
-            logging.error(f"An unexpected error occurred during OpenRouter call: {e}")
+            logging.error(f"An unexpected error occurred during the LLM call: {e}")
             return None
 
     def generate_combined_regex(self, fields, selected_field_names, sample_data):
