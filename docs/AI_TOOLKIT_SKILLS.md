@@ -79,9 +79,15 @@ its own skill. It also requires `name` in the body (the handler rejects `name` a
 *update* field but demands it as an identifier).
 
 **3. The Toolkit's REST handler intermittently answers `bad character (49) in reply
-size`.** It is a chunked-encoding artefact, usually on the first request after a splunkd
-restart, and it is not route-specific. Every call retries past it rather than reporting
-it.
+size`.** Usually on the first request after a splunkd restart, and not route-specific,
+so every call retries past it rather than reporting it.
+
+Worth knowing what that string actually means, because it is easy to misread: it is
+splunkd failing to parse a **persistent handler's reply**, ie the handler did not
+produce a valid chunked response. A *persistent* occurrence means the handler errored at
+startup, almost always a failed import. A *transient* one means it was not ready yet.
+Only the transient kind is worth retrying, and a handler that returns it on every call
+needs its own log read, not another attempt.
 
 ## Idempotency
 

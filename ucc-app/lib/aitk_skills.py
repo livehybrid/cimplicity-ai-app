@@ -29,9 +29,14 @@ THE THREE THINGS THAT MAKE THIS WORK, none of them obvious
    does it. Keep `owner` as splunk-system-user or the next upgrade cannot rewrite
    its own skill.
 3. **The cold-hit artefact.** The Toolkit's REST handler intermittently answers
-   `bad character (49) in reply size`, a chunked-encoding artefact, typically on
-   the first request after a splunkd restart. It is not a real error and it is
-   not specific to any one route, so every call retries.
+   `bad character (49) in reply size`, typically on the first request after a
+   splunkd restart. That string is splunkd failing to parse a *persistent
+   handler's reply*: the handler did not produce a valid chunked response.
+   Permanently, it means the handler errored at startup (a bad import, say);
+   transiently, that it was not ready yet. Here it is the transient kind, it is
+   not specific to any one route, so every call retries. Do not read a single
+   occurrence as proof the route is broken, and do not read a persistent one as
+   transient.
 
 Verified end to end against AI Toolkit 6.1.0 on Splunk Enterprise 10.4 with no
 Splunk Cloud Connect, so this works on-premises as well as on Cloud.
