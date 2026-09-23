@@ -613,9 +613,55 @@ Details in [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md).
    `the existing KV Store catalog is retained`) but it is permanent log noise on any on-premises
    install without SCC, and worth knowing before recommending the Toolkit to a customer.
 
-**Still open:** whether a bring-your-own-key `OpenAI` connection can be *created* on-premises
-without SCC, which decides whether option A works on-prem at all. Finding (2) means it cannot be
-settled over REST; it needs someone to open the Toolkit's connections UI on .222 and try. Two
+**ANSWERED 2026-09-23: yes.** A bring-your-own-key `OpenAI` connection can be created and tested on
+Splunk Enterprise 10.4.0 with AI Toolkit 6.1 and **no Splunk Cloud Connect**. `mlspl.log` on .222:
+
+```
+INFO [mlspl.connection_config_manager.llm.config_manager] [test_llm_connection]
+  Connection test succeeded for connection='OpenAI', provider='OpenAI', model='gpt-4o'.
+```
+
+So **option A is available to on-premises customers with their own key**, not Cloud-only. Only
+Splunk Hosted Models and the Agent Launchpad UI need SCC.
+
+### The GPT-5 trap on the way there
+
+`gpt-5` and `gpt-5-mini` both **fail** the connection test:
+
+```
+litellm.BadRequestError: OpenAIException - Unsupported parameter: 'max_tokens' is not
+supported with this model. Use 'max_completion_tokens' instead.
+```
+
+This is a stale pinned dependency, not an OpenAI surprise. LiteLLM does **not** ship inside the AI
+Toolkit; it comes from **PSC** (`Splunk_SA_Scientific_Python_linux_x86_64`), at version **1.73.6,
+released 2025-06-28**, which predates GPT-5 by weeks. The current LiteLLM is 1.102.1.
+
+The rename is gated on a hardcoded prefix list, so a registry refresh alone would not fix it:
+
+```python
+def is_model_o_series_model(self, model: str) -> bool:
+    model = model.split("/")[-1]
+    return model in litellm.open_ai_chat_completion_models and any(
+        model.startswith(pfx) for pfx in ("o1", "o3", "o4")
+    )
+```
+
+`gpt-5` fails **both** halves: it is absent from the shipped 1140-model registry (which does carry
+`gpt-4.1`, `gpt-4.5-preview` and `o3-pro`), and it does not start with `o1`/`o3`/`o4`. So the
+`max_completion_tokens` rename never runs, `max_tokens` goes out as-is, and OpenAI rejects it.
+Every `aitk_llm_connection` carries `llm_params.max_tokens`, so there is no way to avoid sending it.
+
+**What to use instead:** `gpt-4o` (verified working), an o-series model such as `o3` or `o4-mini`
+(in the registry *and* matched by the prefix list, so the rename fires correctly), or an
+OpenAI-compatible `base_url` such as OpenRouter, where `max_tokens` is accepted as-is. This is what
+the `livehybridsonnet` connection on the Trust stack does, and it is the one benchmarked at 29.4 s
+in §2b.
+
+**Implication for CIMPlicity:** if we ever recommend the Toolkit to a customer, the model choice is
+constrained by whatever LiteLLM version their PSC ships, which they do not control and which lags
+well behind the model providers. That is a real argument for keeping the direct-HTTPS backend as
+the default. Two
 minutes of clicking, and worth doing before any commitment to A.
 
 ---
@@ -745,6 +791,11 @@ first and benefits the current direct-HTTPS path immediately.
    a tarball of it are kept on .222 under `/tmp` for rollback.
 5. **Splunkbase dependency question** — making the AI Toolkit *required* adds a dependency for
    every customer. It should stay optional, with direct-HTTPS as the default.
+5b. **The customer's LiteLLM version constrains the model list** — new, 2026-09-23. LiteLLM comes
+   from PSC, not the Toolkit; .222's PSC 4.2.4 ships 1.73.6 (2025-06-28) against a current 1.102.1,
+   and `gpt-5` fails outright on it (§3F). A customer cannot pick a model newer than their PSC
+   knows about, and they do not control that independently of the Toolkit. Argues for keeping
+   direct-HTTPS as the default backend.
 6. **Who owns the connection** — still open, and §2b sharpened it. `| ai connection=<name>` resolved
    `livehybridsonnet` (`default_users: ['*']` on the working ones) but failed with
    `No configuration found for llm connection` for `OpenAI_GPTOSS_120B` (`default_users: []`).
