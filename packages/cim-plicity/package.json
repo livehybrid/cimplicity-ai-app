@@ -19,7 +19,7 @@
     "react": "^18.2.0",
     "@splunk/react-page": "^8.0.0",
     "@splunk/ci-mplicity-home": "^0.0.1",
-    "@splunk/splunk-utils": "^3.2.0"
+    "@splunk/splunk-utils": "^4.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.2.0",
