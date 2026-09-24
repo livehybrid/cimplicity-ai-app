@@ -23,6 +23,8 @@ curl -k -u admin:changeme -X POST https://localhost:8089/services/cim-plicity/au
 
 The response reports the detected `instance_type` and the action taken (`kv_upsert` with per-tool statuses on Enterprise, `skipped` on Cloud).
 
+The same endpoint also registers the app's **AI Toolkit skills**, which tell a Launchpad agent how to drive these tools well. That half runs on Cloud and Enterprise alike and no-ops when the AI Toolkit is absent. See [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md).
+
 ## Tools
 
 All POST tools take a raw JSON body with `Content-Type: application/json` (the handlers json-parse the payload; form-encoding fails). Full request/response contracts are in the linked endpoint docs.

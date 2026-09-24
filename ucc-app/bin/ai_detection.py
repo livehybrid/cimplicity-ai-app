@@ -27,7 +27,10 @@ sys.path = new_paths
 import logging
 from solnlib import conf_manager
 import ai_settings
+import llm_client
 import llm_response
+import prompts
+import splunk_search
 import requests
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
@@ -70,6 +73,23 @@ class AiDetection(PersistentServerConnectionApplication):
         except Exception:
             logging.getLogger().setLevel(logging.INFO)
 
+    def _search_runner(self):
+        """A oneshot-search runner for the AI Toolkit backend, or None.
+
+        Returns None rather than raising when there is no user token: the direct
+        backend does not need one, and llm_client only asks for it when the
+        Toolkit backend is selected.
+        """
+        key = getattr(self, "user_session_key", None)
+        if not key:
+            return None
+        try:
+            return splunk_search.make_runner(key, getattr(self, "user_name", None),
+                                             app=ADDON_NAME)
+        except Exception as exc:  # noqa: BLE001 - absence is reported by llm_client
+            logging.warning("Could not build a search runner: %s", exc)
+            return None
+
     def get_ai_secret(self):
         """
         Retrieves the OpenRouter API key from Splunk's credential store.
@@ -80,89 +100,44 @@ class AiDetection(PersistentServerConnectionApplication):
             logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
 
-    def call_openrouter(self, api_key, sample_data, description=None):
-        base_prompt = f"""
-        You are a Splunk expert tasked with analyzing a log sample to suggest field extractions.
-        The log sample is:
-        ---
-        {sample_data}
-        ---"""
-        if description:
-            base_prompt += f"""
+    def _prompt_guidance(self, name):
+        """The customer's prompt guidance from cim-plicity_prompts.conf, or None."""
+        def read_stanza(stanza):
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            return cfm.get_conf("cim-plicity_prompts").get(stanza)
+        return prompts.read_configured(read_stanza, name)
 
-        Additional context provided by the user:
-        {description}
-        """
-        prompt = base_prompt + """
-        Your instructions are:
-        1.  Suggest an appropriate Splunk sourcetype for this data (e.g., 'json', 'json_no_timestamp', 'syslog', 'custom_log') or something appropriate to what you think the data is.
-        2.  Identify key fields to be extracted from the log sample.
-        3.  For each field, provide a robust PCRE-based regex pattern that can be used for extraction in Splunk (props.conf). The regex should use named capture groups (e.g., '(?<field_name>...)') and the regex must extract data based on the entire log line and only once!
-        4.  In addition, provide a single regex pattern that can be used to extract all the fields from the log line in one go.
-        5.  Analyze the log data for timestamp patterns and provide:
-           - TIME_FORMAT: The Python datetime format string (e.g., '%Y-%m-%dT%H:%M:%S', '%b %d %H:%M:%S', '%d/%b/%Y:%H:%M:%S %z')
-           - TIME_PREFIX: Any prefix that appears before the timestamp (e.g., '[', '(', or empty string)
-           - MAX_TIMESTAMP_LOOKAHEAD: Maximum characters to look ahead for timestamp (default 25, increase if needed for complex formats)
-        
-        Return your response as a single, valid JSON object with the following EXACT structure:
-        {
-          "sourcetype": "string",
-          "fields": [
-            {
-              "name": "field_name",
-              "regex": "regex_pattern_with_named_groups"
-            }
-          ],
-          "combined_regex": "single_regex_to_extract_all_fields",
-          "time_format": "python_datetime_format_string",
-          "time_prefix": "prefix_before_timestamp_or_empty",
-          "max_timestamp_lookahead": "number_as_string"
-        }
-        
-        Do not include any explanatory text outside of the JSON object.
-        """
+    def call_openrouter(self, api_key, sample_data, description=None):
+        # The guidance half of this prompt is customer-editable
+        # (default/cim-plicity_prompts.conf); the JSON output contract is not and
+        # is appended by prompts.render. See lib/prompts.py.
+        description_block = ""
+        if description:
+            description_block = ("Additional context provided by the user:\n%s"
+                                 % description)
+        prompt = prompts.render("ai_detection",
+                                {"sample_data": sample_data,
+                                 "description_block": description_block},
+                                configured=self._prompt_guidance("ai_detection"))
         try:
             logging.info("Sending request to OpenRouter...")
-            # Fetch endpoint and model from config, with working defaults
-            ai_conf = self.get_ai_settings()
-            api_endpoint = ai_conf.get("api_endpoint") or 'https://openrouter.ai/api/v1/chat/completions'
-            model = ai_conf.get("model") or 'anthropic/claude-3-5-sonnet-20241022'
-            logging.info(f"Using model: {model}")
-
-            response = requests.post(
-                url=api_endpoint,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "X-Title": "Cim-plicity",
-                    "HTTP-Referer": "https://github.com/livehybrid/cimplicity-ai-onboarding",
-                    "Content-Type": "application/json"
-                },
-                data=json.dumps({
-                    "model": model,  # Use the fetched model
-                    "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"}
-                }),
-                timeout=60
-            )
-            response.raise_for_status()
-            content = response.json()['choices'][0]['message']['content']
-            logging.info(
-                "Received successful response from OpenRouter (%d chars)."
-                % (len(content) if isinstance(content, str) else 0)
-            )
+            # The transport lives in lib/llm_client.py so both AI handlers share
+            # one implementation (and one timeout/max_tokens policy).
+            settings = dict(self.get_ai_settings() or {})
+            settings["api_key"] = api_key
+            content = llm_client.complete(settings, prompt, title="Cim-plicity",
+                                          search=self._search_runner())
             # Models wrap the object in a markdown fence or a line of preamble
-            # even when asked not to, and a refused or truncated completion
-            # arrives as null content. Returning None here puts the caller on
-            # the local fallback rather than raising.
+            # even when asked not to. Returning None here puts the caller on the
+            # local fallback rather than raising.
             return llm_response.parse_json(content)
-        except requests.exceptions.Timeout:
-            logging.error("Request to OpenRouter timed out.")
-            return None
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling OpenRouter: {e}")
+        except llm_client.LlmError as e:
+            # Every failure mode is a fallback, not an error: ai_detection has a
+            # local regex path and degrades to it rather than failing the request.
+            logging.error(f"AI detection LLM call failed ({e.reason}): {e.detail}")
             return None
         except Exception as e:
-            logging.error(f"An unexpected error occurred during OpenRouter call: {e}")
+            logging.error(f"An unexpected error occurred during the LLM call: {e}")
             return None
 
     def generate_combined_regex(self, fields, selected_field_names, sample_data):
@@ -353,7 +328,11 @@ class AiDetection(PersistentServerConnectionApplication):
         if not self.system_session_key:
             logging.error("No session key provided")
             return {'payload': {'error': 'No session key provided'}, 'status': 401}
-        self.user_name = (inbound_payload.get('session') or {}).get('user')
+        session = inbound_payload.get('session') or {}
+        self.user_name = session.get('user')
+        # The AI Toolkit backend dispatches a search, and Toolkit connections are
+        # per-user, so it needs the CALLER'S token rather than the system one.
+        self.user_session_key = session.get('authtoken')
         self.apply_log_level()
         try:
             posted_data = json.loads(inbound_payload.get('payload', '{}'))

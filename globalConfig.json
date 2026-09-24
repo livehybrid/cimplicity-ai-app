@@ -7,11 +7,55 @@
                     "title": "AI Configuration",
                     "entity": [
                         {
+                            "type": "singleSelect",
+                            "label": "LLM Backend",
+                            "field": "backend",
+                            "help": "Direct calls the LLM API below with your own key. Splunk AI Toolkit borrows an LLM connection configured in the AI Toolkit app instead, so there is no second API key to manage, and on Splunk Cloud it can reach Splunk Hosted Models. The Toolkit route is noticeably slower because each call is dispatched as a search.",
+                            "required": false,
+                            "defaultValue": "direct",
+                            "options": {
+                                "disableSearch": true,
+                                "items": [
+                                    {
+                                        "value": "direct",
+                                        "label": "Direct (API key)"
+                                    },
+                                    {
+                                        "value": "splunk_ai_toolkit",
+                                        "label": "Splunk AI Toolkit"
+                                    }
+                                ]
+                            },
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Backend must be either 'direct' or 'splunk_ai_toolkit'",
+                                    "pattern": "^(direct|splunk_ai_toolkit)$"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "text",
+                            "label": "AI Toolkit connection",
+                            "field": "toolkit_connection",
+                            "help": "Only used when the backend is Splunk AI Toolkit. Name of an LLM connection in the AI Toolkit. Leave blank to use your default connection. Note connections are per-user: one that is not shared with you cannot be used.",
+                            "required": false,
+                            "encrypted": false,
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of connection name should be between 0 and 255",
+                                    "minLength": 0,
+                                    "maxLength": 255
+                                }
+                            ]
+                        },
+                        {
                             "type": "text",
                             "label": "LLM API Endpoint",
                             "field": "api_endpoint",
-                            "help": "e.g. https://openrouter.ai/api/v1/chat/completions",
-                            "required": true,
+                            "help": "e.g. https://openrouter.ai/api/v1/chat/completions Required when the backend is Direct.",
+                            "required": false,
                             "encrypted": false,
                             "validators": [
                                 {
@@ -26,8 +70,8 @@
                             "type": "text",
                             "label": "API key",
                             "field": "api_key",
-                            "help": "API key",
-                            "required": true,
+                            "help": "API key Required when the backend is Direct.",
+                            "required": false,
                             "encrypted": true,
                             "validators": [
                                 {
@@ -42,8 +86,8 @@
                             "type": "singleSelect",
                             "label": "Model",
                             "field": "model",
-                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list.",
-                            "required": true,
+                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list. Required when the backend is Direct.",
+                            "required": false,
                             "options": {
                                 "endpointUrl": "cim-plicity/ai_model_choices",
                                 "labelField": "label",

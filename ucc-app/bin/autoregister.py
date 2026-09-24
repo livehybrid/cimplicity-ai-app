@@ -18,13 +18,33 @@ inputSchema and an execution body template that tools.conf cannot express, so th
 minimal signatures live inline in TOOLS here — one place, next to the code that
 ships them. Keep TOOLS in lockstep with default/tools.conf.
 
+It ALSO registers the app's AI Toolkit skills (lib/aitk_skills.py) on the same
+trigger. That half runs on Cloud and Enterprise alike (unlike the MCP KV upsert
+above, which is Enterprise-only) and no-ops quietly when the AI Toolkit is not
+installed, which is the common case.
+
 Also serves the cim_plicity_ping health tool (dispatch on the matched restmap
 path), and is callable directly (POST /services/cim-plicity/autoregister) as a
-one-shot. Runs with passSystemAuth=true (system session key). Pure stdlib +
-splunk.rest, so it runs on Splunk's default persistent-handler python.
+one-shot; POST /services/cim-plicity/register_skills does the skills half alone,
+which is the retry path when the Toolkit is installed after the app. Runs with
+passSystemAuth=true (system session key). Pure stdlib + splunk.rest, so it runs
+on Splunk's default persistent-handler python.
 """
 import json
+import os
+import sys
 import urllib.parse
+
+# persistconn does not put the app's lib/ on sys.path; add it so aitk_skills is
+# importable here and from the tests, which run this module outside splunkd.
+_LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+try:
+    import aitk_skills
+except Exception:  # pragma: no cover - keeps MCP registration working on its own
+    aitk_skills = None
 
 try:
     from splunk.persistconn.application import PersistentServerConnectionApplication
@@ -202,6 +222,34 @@ def _register_kv(sk):
     return out
 
 
+def _skills_request(sk):
+    """Adapt splunk.rest to the (method, url, body) -> (status, text) contract
+    lib/aitk_skills.py expects, so that module stays free of splunkd imports and
+    can be tested without one."""
+    def request(method, url, body=None):
+        kwargs = {"sessionKey": sk, "method": method, "raiseAllErrors": False}
+        if body is not None:
+            kwargs["jsonargs"] = json.dumps(body)
+        resp, content = rest.simpleRequest(url, **kwargs)
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", "replace")
+        return _status(resp), content or ""
+    return request
+
+
+def _register_skills(sk):
+    """Register the AI Toolkit skills, or say why not. Never raises."""
+    if aitk_skills is None:
+        return {"action": "skipped", "reason": "aitk_skills module unavailable"}
+    try:
+        request = _skills_request(sk)
+        if not aitk_skills.toolkit_present(request):
+            return {"action": "skipped", "reason": "AI Toolkit not installed"}
+        return {"action": "registered", "results": aitk_skills.register_skills(request)}
+    except Exception as exc:  # noqa: BLE001 - a reload trigger must not fail the install
+        return {"action": "failed", "reason": str(exc)}
+
+
 class AutoRegisterHandler(PersistentServerConnectionApplication):
     def __init__(self, command_line=None, command_arg=None):
         super(AutoRegisterHandler, self).__init__()
@@ -225,12 +273,20 @@ class AutoRegisterHandler(PersistentServerConnectionApplication):
             if rest is None or not sk:
                 # 401 for direct callers; the app.conf reload trigger ignores the status
                 return {"payload": json.dumps({"ok": False, "error": "no system session key"}), "status": 401}
+            if self._leaf(req) == "register_skills":
+                return {"payload": json.dumps({"ok": True, "skills": _register_skills(sk)}),
+                        "status": 200}
+            # Skills registration is platform-independent, so it runs before the
+            # Cloud early-return below.
+            skills = _register_skills(sk)
             itype = _instance_type(sk)
             if itype == "cloud":
                 return {"payload": json.dumps({"ok": True, "instance_type": itype,
-                        "action": "skipped (native Cloud synced-apps registrar handles it)"}), "status": 200}
+                        "action": "skipped (native Cloud synced-apps registrar handles it)",
+                        "skills": skills}), "status": 200}
             return {"payload": json.dumps({"ok": True, "instance_type": itype,
-                    "action": "kv_upsert", "results": _register_kv(sk)}), "status": 200}
+                    "action": "kv_upsert", "results": _register_kv(sk),
+                    "skills": skills}), "status": 200}
         except Exception as exc:  # noqa: BLE001 - never raise out of a reload trigger
             return {"payload": json.dumps({"ok": False, "error": str(exc)}), "status": 200}
 
