@@ -72,6 +72,21 @@ TOOLKIT_ERROR_CONTENT = {
     "TimeoutError - Request timed out": "timeout",
 }
 
+# Some of those failures have a fix the customer can actually apply, and the
+# Toolkit's own wording does not hint at it. Appended to the error detail.
+TOOLKIT_ERROR_HINTS = {
+    "Empty response content received from the server.":
+        "The AI Toolkit connection's llm_params.max_tokens is probably too low. It is "
+        "shared between reasoning and output, so a reasoning model can spend the whole "
+        "budget thinking and return nothing. 2000 is the default and is not enough; "
+        "8000 worked for this prompt. | ai cannot override it, so raise it on the "
+        "connection in the AI Toolkit.",
+    "Prompt length too long. Please reduce the length of the prompt.":
+        "Try a shorter sample event, or a CIM data model with fewer fields.",
+    "You exceeded your current quota, please check your plan and billing details.":
+        "This is the quota on the AI Toolkit connection's provider account, not on Splunk.",
+}
+
 
 class ToolkitError(Exception):
     """Mirrors llm_client.LlmError's shape so callers map one set of reasons."""
@@ -160,10 +175,14 @@ def complete(settings, prompt, search):
 
     # The successful-looking failure. Must be checked before the content is
     # handed back, or the caller parses an error message as an answer.
-    reason = TOOLKIT_ERROR_CONTENT.get(content.strip())
+    stripped = content.strip()
+    reason = TOOLKIT_ERROR_CONTENT.get(stripped)
     if reason:
-        raise ToolkitError(reason, "| ai returned an error as its result: %s"
-                           % content.strip())
+        detail = "| ai returned an error as its result: %s" % stripped
+        hint = TOOLKIT_ERROR_HINTS.get(stripped)
+        if hint:
+            detail = "%s %s" % (detail, hint)
+        raise ToolkitError(reason, detail)
 
     logging.info("AI Toolkit reply received (%d chars)", len(content))
     return content

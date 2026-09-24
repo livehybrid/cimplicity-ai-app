@@ -175,3 +175,18 @@ def test_a_real_answer_that_merely_mentions_an_error_is_not_swallowed():
     # legitimate JSON answer discussing errors still comes through.
     answer = '{"note": "Empty response content received from the server."}'
     assert llm_toolkit.complete({}, "hi", runner([{"ai_result_1": answer}])) == answer
+
+
+def test_the_empty_reply_error_says_how_to_fix_it():
+    # The Toolkit's own wording gives no clue that the connection's max_tokens is
+    # the cause, and raising it from 2000 to 8000 demonstrably fixes it.
+    msg = "Empty response content received from the server."
+    with pytest.raises(llm_toolkit.ToolkitError) as exc:
+        llm_toolkit.complete({}, "hi", runner([{"ai_result_1": msg}]))
+    assert "max_tokens" in exc.value.detail
+    assert "reasoning" in exc.value.detail
+
+
+def test_every_hint_is_for_a_recognised_error():
+    # A hint keyed on a string that is not in the error table would never fire.
+    assert set(llm_toolkit.TOOLKIT_ERROR_HINTS) <= set(llm_toolkit.TOOLKIT_ERROR_CONTENT)
