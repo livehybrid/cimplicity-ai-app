@@ -30,8 +30,20 @@ guidance = You are a Splunk expert analysing a log sample to suggest field extra
     4. Provide a combined regex, TIME_FORMAT, TIME_PREFIX and MAX_TIMESTAMP_LOOKAHEAD.
 ```
 
-Values continue across lines with a trailing backslash. No restart is needed: `app.conf`
-`[triggers]` reloads this conf, and the handlers read it per request.
+Values continue across lines with a trailing backslash.
+
+**No restart is needed, but a conf reload is.** Editing through Splunk Web or the REST
+config endpoints reloads automatically. Editing the file on disk does **not**: splunkd
+serves the conf from memory, so your change is invisible until you reload it.
+
+```
+curl -k -u admin:changeme -X POST \
+  https://localhost:8089/servicesNS/nobody/cim-plicity/configs/conf-cim-plicity_prompts/_reload
+```
+
+Verified on a live instance: after a direct file edit the app still used the old prompt,
+and after that one POST it used the new one, with no restart. The `[triggers]` entry in
+`app.conf` declares *how* to reload, not that a file edit triggers it.
 
 That example is not hypothetical. Run against a door-access event it produces
 `sourcetype = acme:badgeaccess` and a field called `acme_badge_id`.
