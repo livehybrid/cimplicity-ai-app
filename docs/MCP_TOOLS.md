@@ -23,6 +23,25 @@ curl -k -u admin:changeme -X POST https://localhost:8089/services/cim-plicity/au
 
 The response reports the detected `instance_type` and the action taken (`kv_upsert` with per-tool statuses on Enterprise, `skipped` on Cloud).
 
+### Upgrading from a build before `d01b087`
+
+Registration only ever **upserts**, so it cannot remove a row it no longer writes. An
+instance that registered before the name-prefix fix therefore keeps its old
+**unprefixed** `mcp_tools_enabled` rows (`ai_detection`, `pii_detection`, `cim_mapping`)
+alongside the correct `cim_plicity_*` ones, and each affected tool is advertised to MCP
+clients twice. Nothing breaks, because both keys point at the same valid `tool_id`, but
+the duplicates are confusing and worth removing once.
+
+Found on `.222` on 2026-09-24 and cleaned there. To check an instance:
+
+```
+| rest /servicesNS/nobody/Splunk_MCP_Server/storage/collections/data/mcp_tools_enabled
+```
+
+Any key that starts with a `cim-plicity:` `tool_id` but is *not* one of the four names
+`autoregister.mcp_name()` produces is stale and can be deleted. Removal is permanent:
+re-running `/services/cim-plicity/autoregister` writes only the prefixed names.
+
 The same endpoint also registers the app's **AI Toolkit skills**, which tell a Launchpad agent how to drive these tools well. That half runs on Cloud and Enterprise alike and no-ops when the AI Toolkit is absent. See [AI_TOOLKIT_SKILLS.md](AI_TOOLKIT_SKILLS.md).
 
 ## Tools
