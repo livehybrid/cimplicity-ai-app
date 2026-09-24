@@ -891,8 +891,37 @@ None of that argues against *offering* it: a customer who wants one managed key,
 Models on Cloud, can now have it, and the seam cost almost nothing. It argues against defaulting to
 it.
 
+### The max_tokens diagnosis, CONFIRMED 2026-09-24
+
+Raising `OpenAIDefault`'s `llm_params.max_tokens` from **2000 to 8000** fixes `ai_detection`
+outright. Same prompt, same connection, same model:
+
+| `max_tokens` | Result |
+|---|---|
+| 2000 | `Empty response content received from the server.` |
+| 8000 | **2470-char reply, parsed, 13 fields**, in 110.7 s |
+
+So the failure was never prompt size or JSON fidelity: gpt-5-mini's reasoning tokens were eating
+the whole budget before it emitted anything. The connection's `max_tokens` is shared between
+reasoning and output, `| ai` cannot override it, and the symptom is an empty reply rather than an
+error.
+
+**Practical consequence.** A customer choosing the Toolkit backend with a reasoning model needs a
+connection `max_tokens` well above the 2000 default, and nothing tells them that. Our error
+message should. The reply is now correctly surfaced as `bad_response` with the Toolkit's own
+wording, which at least names the symptom.
+
+It does not change the default: the Toolkit route still costs ~110 s against ~60 s direct for the
+same call.
+
+### Editing a connection
+
+There is no REST route for LLM connections (`/mltk/llm_connections` is 404), so the Launchpad UI
+writes `aitk_llm_connection` directly and a KV write is the supported mechanism. Updating an
+**existing** connection's `llm_params` this way works and takes effect immediately; only
+*creating* one needs the UI, because creation also registers the secret under
+`storage/passwords` realm `aitk_llm_secrets:<name>`.
+
 ### Still untested
 
 `| aiagent` and option F's agent half, which need Agent Launchpad and therefore SCC on-premises.
-Whether raising a connection's `max_tokens` past 2000 makes `ai_detection` succeed through `| ai`
-is the obvious next check and needs a connection edit in the Toolkit UI.

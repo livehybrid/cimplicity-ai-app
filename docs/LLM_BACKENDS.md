@@ -57,11 +57,22 @@ Parse that and you get an error string where JSON should be. `llm_toolkit` rejec
 Toolkit's own `LLM_EXCEPTION_LIST` before returning content. Observed live when
 gpt-5-mini spent its entire 2000-token connection budget reasoning and returned nothing.
 
-**3. The connection's `max_tokens` is a hard ceiling.** `| ai` takes only
-`prompt`, `connection`, `provider` and `model`: no `max_tokens`, no `temperature`, no
-`response_format`. Every connection seen in the wild defaults to 2000, shared between
-reasoning and output on a reasoning model. If replies come back empty, that is the first
-thing to raise, and only the customer can do it, in the Toolkit UI.
+**3. The connection's `max_tokens` is a hard ceiling, and 2000 is not enough.** `| ai`
+takes only `prompt`, `connection`, `provider` and `model`: no `max_tokens`, no
+`temperature`, no `response_format`. Every connection defaults to 2000, **shared between
+reasoning and output** on a reasoning model, so the model can spend the lot thinking and
+return nothing.
+
+Measured, same prompt and model, only the connection's budget changed:
+
+| `max_tokens` | Result |
+|---|---|
+| 2000 | `Empty response content received from the server.` |
+| 8000 | a 2470-char reply, parsed, 13 fields |
+
+If replies come back empty, **raise this first**. There is no REST route for connections,
+so it is a Launchpad UI edit (or a direct write to the `aitk_llm_connection` KV
+collection, which is what the UI does).
 
 **4. Connections are per-user.** `default_users` gates who can see one, and the
 default-connection mapping is per user too. The search therefore runs with the *caller's*
