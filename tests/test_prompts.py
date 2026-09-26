@@ -261,3 +261,15 @@ def test_the_globalconfig_prompts_tab_matches_the_fields_the_code_reads():
     assert fields == expected, (fields, expected)
     for e in tab["entity"]:
         assert e["type"] == "textarea", e["field"]
+
+
+def test_the_prompts_stanza_exists_in_the_default_settings_conf():
+    # ucc-gen generates a tab's conf SPEC but NOT its stanza, and the UCC settings
+    # REST handler 404s on a stanza it cannot find. Without this stanza the
+    # Prompts tab renders and every save fails with
+    # "Could not find object id=prompts". Found by testing the deployed app.
+    conf = os.path.join(REPO, "ucc-app", "default", "cim-plicity_settings.conf")
+    stanzas = _parse_conf(conf)
+    assert prompts.SETTINGS_STANZA in stanzas, "the [prompts] stanza is missing"
+    for name in prompts.REQUIRED_PLACEHOLDERS:
+        assert prompts.SETTINGS_FIELD % name in stanzas[prompts.SETTINGS_STANZA]

@@ -33,7 +33,9 @@ guidance*. Leave a box empty to fall through to the conf file or the shipped pro
 values land in `local/cim-plicity_settings.conf` under `[prompts]`, and take effect on the
 next call with no restart or reload.
 
-This is the easier route and the one to reach for first.
+This is the easier route and the one to reach for first. It also **takes effect
+immediately**: UCC saves through a REST handler, which updates splunkd's in-memory conf,
+so there is nothing to reload. The file route below does need a reload.
 
 ### 2. In the conf file
 
