@@ -182,3 +182,82 @@ def test_a_spec_file_ships_for_appinspect():
     spec = open(SPEC).read()
     assert "guidance = <string>" in spec
     assert "{sample_data}" in spec
+
+
+# --- two editable places, with precedence -----------------------------------
+
+UI = "the Prompts tab"
+
+
+def test_the_settings_page_wins_over_the_conf_file():
+    # The UI is where a customer looks first; a value typed there must not be
+    # silently outranked by a file they may not know exists.
+    out = prompts.render("ai_detection", DETECT_VALUES,
+                         configured="FROM CONF {sample_data}",
+                         settings_guidance="FROM UI {sample_data}")
+    assert "FROM UI" in out and "FROM CONF" not in out
+
+
+def test_the_conf_file_is_used_when_the_settings_page_is_blank():
+    for blank in (None, "", "   "):
+        out = prompts.render("ai_detection", DETECT_VALUES,
+                             configured="FROM CONF {sample_data}",
+                             settings_guidance=blank)
+        assert "FROM CONF" in out, repr(blank)
+
+
+def test_a_bad_settings_value_falls_through_to_the_conf_rather_than_to_default():
+    # The important property: one bad edit cannot mask a good prompt elsewhere.
+    out = prompts.render("ai_detection", DETECT_VALUES,
+                         configured="FROM CONF {sample_data}",
+                         settings_guidance="no placeholder here")
+    assert "FROM CONF" in out
+    assert "You are a Splunk expert" not in out
+
+
+def test_both_bad_falls_all_the_way_to_the_shipped_default():
+    out = prompts.render("ai_detection", DETECT_VALUES,
+                         configured="also bad", settings_guidance="bad too")
+    assert "You are a Splunk expert" in out
+
+
+def test_the_log_names_which_place_the_bad_value_is_in(caplog):
+    import logging
+    with caplog.at_level(logging.ERROR):
+        prompts.resolve_guidance("ai_detection",
+                                 ("the Prompts tab on the Configuration page", "bad"),
+                                 ("cim-plicity_prompts.conf", "also bad {sample_data}"))
+    assert "Prompts tab" in caplog.text
+    # the second candidate was valid, so it must not be reported as bad
+    assert "cim-plicity_prompts.conf" not in caplog.text
+
+
+def test_settings_guidance_is_read_from_the_prompts_stanza():
+    # UCC writes one field per prompt into [prompts] of cim-plicity_settings.conf.
+    seen = []
+    def read(stanza):
+        seen.append(stanza)
+        return {"ai_detection_guidance": "x", "cim_mapping_guidance": "y"}
+    assert prompts.read_settings_guidance(read, "ai_detection") == "x"
+    assert prompts.read_settings_guidance(read, "cim_mapping") == "y"
+    assert seen == [prompts.SETTINGS_STANZA, prompts.SETTINGS_STANZA]
+
+
+def test_a_broken_settings_read_is_not_fatal():
+    def boom(_stanza):
+        raise RuntimeError("conf unavailable")
+    assert prompts.read_settings_guidance(boom, "ai_detection") is None
+
+
+def test_the_globalconfig_prompts_tab_matches_the_fields_the_code_reads():
+    # A field renamed in globalConfig without renaming it here would silently
+    # never be read, and the UI would look like it did nothing.
+    import json, os
+    gc = json.load(open(os.path.join(REPO, "globalConfig.json")))
+    tab = next(t for t in gc["pages"]["configuration"]["tabs"]
+               if t.get("name") == prompts.SETTINGS_STANZA)
+    fields = {e["field"] for e in tab["entity"]}
+    expected = {prompts.SETTINGS_FIELD % n for n in prompts.REQUIRED_PLACEHOLDERS}
+    assert fields == expected, (fields, expected)
+    for e in tab["entity"]:
+        assert e["type"] == "textarea", e["field"]

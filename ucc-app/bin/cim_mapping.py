@@ -123,11 +123,21 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             return None
 
     def _prompt_guidance(self, name):
-        """The customer's prompt guidance from cim-plicity_prompts.conf, or None."""
-        def read_stanza(stanza):
+        """The customer's prompt guidance from both editable places.
+
+        Returns (settings_guidance, conf_guidance). The Prompts tab on the
+        Configuration page wins; see lib/prompts.render.
+        """
+        def read_prompts_conf(stanza):
             cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
             return cfm.get_conf("cim-plicity_prompts").get(stanza)
-        return prompts.read_configured(read_stanza, name)
+
+        def read_settings(stanza):
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            return cfm.get_conf("cim-plicity_settings").get(stanza)
+
+        return (prompts.read_settings_guidance(read_settings, name),
+                prompts.read_configured(read_prompts_conf, name))
 
     def get_ai_secret(self):
         try:
@@ -145,12 +155,14 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         # The guidance half of this prompt is customer-editable
         # (default/cim-plicity_prompts.conf); the JSON output contract is not and
         # is appended by prompts.render. See lib/prompts.py.
+        from_settings, from_conf = self._prompt_guidance("cim_mapping")
         prompt = prompts.render(
             "cim_mapping",
             {"cim_model": cim_model,
              "available_cim_fields": json.dumps(available_cim_fields, indent=2),
              "extracted_fields": json.dumps(extracted_fields, indent=2)},
-            configured=self._prompt_guidance("cim_mapping"))
+            configured=from_conf,
+            settings_guidance=from_settings)
         try:
             # The transport lives in lib/llm_client.py so both AI handlers share
             # one implementation (and one timeout/max_tokens policy).

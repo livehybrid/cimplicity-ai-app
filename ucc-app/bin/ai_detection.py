@@ -101,11 +101,21 @@ class AiDetection(PersistentServerConnectionApplication):
             return None
 
     def _prompt_guidance(self, name):
-        """The customer's prompt guidance from cim-plicity_prompts.conf, or None."""
-        def read_stanza(stanza):
+        """The customer's prompt guidance from both editable places.
+
+        Returns (settings_guidance, conf_guidance). The Prompts tab on the
+        Configuration page wins; see lib/prompts.render.
+        """
+        def read_prompts_conf(stanza):
             cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
             return cfm.get_conf("cim-plicity_prompts").get(stanza)
-        return prompts.read_configured(read_stanza, name)
+
+        def read_settings(stanza):
+            cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
+            return cfm.get_conf("cim-plicity_settings").get(stanza)
+
+        return (prompts.read_settings_guidance(read_settings, name),
+                prompts.read_configured(read_prompts_conf, name))
 
     def call_openrouter(self, api_key, sample_data, description=None):
         # The guidance half of this prompt is customer-editable
@@ -115,10 +125,12 @@ class AiDetection(PersistentServerConnectionApplication):
         if description:
             description_block = ("Additional context provided by the user:\n%s"
                                  % description)
+        from_settings, from_conf = self._prompt_guidance("ai_detection")
         prompt = prompts.render("ai_detection",
                                 {"sample_data": sample_data,
                                  "description_block": description_block},
-                                configured=self._prompt_guidance("ai_detection"))
+                                configured=from_conf,
+                                settings_guidance=from_settings)
         try:
             logging.info("Sending request to OpenRouter...")
             # The transport lives in lib/llm_client.py so both AI handlers share

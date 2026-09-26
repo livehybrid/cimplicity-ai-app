@@ -3,9 +3,18 @@
 Prompts were inline f-strings in the two handlers, so a customer who wanted the
 model to know something about their data ("device_id is always a MAC", "ignore
 the trailing correlation token") had no way to say so without forking the app.
-Now the *guidance* half lives in `cim-plicity_prompts.conf` and layers the
-normal Splunk way: `default/` ships ours, `local/` holds theirs, an upgrade does
-not clobber it.
+The *guidance* half is now editable in two places, tried in this order:
+
+  1. the **Prompts tab** on the Configuration page, which is where a customer
+     will look first. Stored in `cim-plicity_settings.conf [prompts]`.
+  2. **`cim-plicity_prompts.conf`**, which layers the normal Splunk way
+     (`default/` ships ours, `local/` holds theirs, upgrades do not clobber it)
+     and suits anything deployed by configuration management.
+  3. the shipped default below.
+
+Each level is validated independently and an unusable value falls through to the
+next rather than being sent, so a bad edit in the UI cannot mask a good prompt in
+the conf file.
 
 THE SPLIT IS THE WHOLE POINT. Each prompt ends with an output contract, the
 required JSON shape plus "no text outside the JSON". Externalising the prompt as
@@ -143,26 +152,70 @@ def missing_placeholders(name, guidance):
     return tuple(p for p in REQUIRED_PLACEHOLDERS.get(name, ()) if p not in present)
 
 
-def resolve_guidance(name, configured):
-    """The guidance to use: the customer's if usable, otherwise the shipped one."""
-    default = DEFAULT_GUIDANCE[name]
-    if not configured or not configured.strip():
-        return default
-    missing = missing_placeholders(name, configured)
-    if missing:
-        logging.error(
-            "Configured '%s' prompt guidance is missing required placeholder(s) %s; "
-            "falling back to the shipped default. Edit [%s] guidance in "
-            "cim-plicity_prompts.conf and put them back.",
-            name, ", ".join("{%s}" % m for m in missing), name)
-        return default
-    return configured
+def resolve_guidance(name, *candidates):
+    """The first usable guidance, in the caller's order of precedence.
+
+    Each candidate may be None, blank, or a template. A candidate missing a
+    required placeholder is skipped with a loud log rather than used, so a bad
+    edit in one place cannot mask a good prompt in another. Falls back to the
+    shipped default.
+
+    Candidates may be given as (source_name, value) pairs so the log says where
+    the bad value is, which matters now there is more than one place to edit.
+    """
+    for candidate in candidates:
+        source, value = candidate if isinstance(candidate, tuple) else (None, candidate)
+        if not value or not value.strip():
+            continue
+        missing = missing_placeholders(name, value)
+        if missing:
+            logging.error(
+                "The '%s' prompt guidance%s is missing required placeholder(s) %s, so it "
+                "is being IGNORED. Put them back, or clear the value to use the shipped "
+                "prompt.",
+                name, " in %s" % source if source else "",
+                ", ".join("{%s}" % m for m in missing))
+            continue
+        if source:
+            logging.info("Using '%s' prompt guidance from %s", name, source)
+        return value
+    return DEFAULT_GUIDANCE[name]
 
 
-def render(name, values, configured=None):
-    """The full prompt: resolved guidance, substituted, plus the fixed contract."""
-    guidance = resolve_guidance(name, configured)
+def render(name, values, configured=None, settings_guidance=None):
+    """The full prompt: resolved guidance, substituted, plus the fixed contract.
+
+    settings_guidance (the Configuration page) wins over configured
+    (cim-plicity_prompts.conf), because the UI is where a customer looks first
+    and a value typed there should not be silently outranked by a file.
+    """
+    guidance = resolve_guidance(
+        name,
+        ("the Prompts tab on the Configuration page", settings_guidance),
+        ("cim-plicity_prompts.conf", configured))
     return "%s\n%s" % (substitute(guidance, values).rstrip(), CONTRACTS[name])
+
+
+# The Configuration page's Prompts tab writes one field per prompt into the
+# [prompts] stanza of cim-plicity_settings.conf.
+SETTINGS_STANZA = "prompts"
+SETTINGS_FIELD = "%s_guidance"
+
+
+def read_settings_guidance(read_stanza, name):
+    """One guidance string from the Configuration page's Prompts tab, or None.
+
+    read_stanza: callable taking a stanza name and returning its dict. Any
+    failure is "not configured", never raised: a broken settings read must not
+    take the app down when there is a perfectly good shipped prompt.
+    """
+    try:
+        stanza = read_stanza(SETTINGS_STANZA) or {}
+        value = stanza.get(SETTINGS_FIELD % name)
+        return value if value and value.strip() else None
+    except Exception as exc:  # noqa: BLE001 - absence is the safe outcome
+        logging.debug("No '%s' prompt guidance from the settings page (%s)", name, exc)
+        return None
 
 
 def read_configured(read_stanza, name):

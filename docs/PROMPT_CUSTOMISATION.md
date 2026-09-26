@@ -14,6 +14,29 @@ would look like a bug rather than a setting.
 
 ## Changing a prompt
 
+Two places, tried in this order. The first usable value wins.
+
+| | Where | Best for |
+|---|---|---|
+| 1 | **Configuration → Prompts** in the app UI | trying something out, one-off tweaks |
+| 2 | `local/cim-plicity_prompts.conf` | anything deployed by configuration management |
+| 3 | the shipped default | when both are blank |
+
+Each level is validated on its own, and an unusable value **falls through to the next
+rather than being sent**, so a bad edit in the UI cannot mask a good prompt in the conf
+file. `cim-plicity.log` says which place a rejected value came from.
+
+### 1. In the UI
+
+**Configuration → Prompts**, two boxes: *Field extraction guidance* and *CIM mapping
+guidance*. Leave a box empty to fall through to the conf file or the shipped prompt. Saved
+values land in `local/cim-plicity_settings.conf` under `[prompts]`, and take effect on the
+next call with no restart or reload.
+
+This is the easier route and the one to reach for first.
+
+### 2. In the conf file
+
 Create `local/cim-plicity_prompts.conf` in the app directory. Splunk layers `local/` over
 `default/`, so your edits survive an app upgrade. Do not edit `default/`; it is replaced
 on upgrade.
@@ -89,7 +112,8 @@ that contradicts it.
 
 | Path | What |
 |---|---|
+| Configuration → Prompts (UI) | the first place checked; stored in `local/cim-plicity_settings.conf` `[prompts]` |
 | `default/cim-plicity_prompts.conf` | the shipped guidance. Read it first, then copy what you want to change |
-| `local/cim-plicity_prompts.conf` | your overrides |
+| `local/cim-plicity_prompts.conf` | your file-based overrides |
 | `README/cim-plicity_prompts.conf.spec` | the settings reference |
-| `lib/prompts.py` | the contracts, the placeholder validation, and the in-code fallback |
+| `lib/prompts.py` | the contracts, the placeholder validation, the precedence, and the in-code fallback |
