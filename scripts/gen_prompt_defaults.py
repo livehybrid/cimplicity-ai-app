@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Generate the [prompts] stanza of default/cim-plicity_settings.conf.
+"""Generate every shipped copy of the prompt guidance from one source.
 
-`lib/prompts.DEFAULT_GUIDANCE` is the single authored copy of the shipped
-prompt guidance. This writes it into the settings conf so the Configuration
-page's Prompts tab shows the real prompt instead of an empty box, which is what
-anyone opening that tab expects to find.
+`lib/prompts.DEFAULT_GUIDANCE` is the single authored copy. It is shipped in two
+conf files, and BOTH are generated here so they cannot drift:
 
-Run after editing DEFAULT_GUIDANCE. tests/test_prompts.py asserts the two stay
+  default/cim-plicity_settings.conf  [prompts]   the Configuration page's tab
+  default/cim-plicity_prompts.conf   [<name>]    the file-based override layer
+
+Writing only one of them is exactly the mistake this script exists to prevent:
+the tab would show one prompt while the conf offered another.
+
+Run after editing DEFAULT_GUIDANCE. tests/test_prompts.py asserts all three stay
 in lockstep, so a forgotten run fails the build rather than shipping a tab whose
 contents do not match the prompt actually used.
 
@@ -20,7 +24,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "ucc-app", "lib"))
 import prompts  # noqa: E402
 
-CONF = os.path.join(REPO, "ucc-app", "default", "cim-plicity_settings.conf")
+SETTINGS_CONF = os.path.join(REPO, "ucc-app", "default", "cim-plicity_settings.conf")
+PROMPTS_CONF = os.path.join(REPO, "ucc-app", "default", "cim-plicity_prompts.conf")
 
 HEADER = """
 # Prompt guidance, edited on the Configuration page's Prompts tab.
@@ -59,8 +64,27 @@ def build_stanza():
     return "\n".join(out) + "\n"
 
 
+def rewrite_prompts_conf():
+    """Rewrite the guidance values in default/cim-plicity_prompts.conf.
+
+    Keeps the file's comment header (it documents the placeholders and the
+    reload requirement) and replaces everything from the first stanza on.
+    """
+    s = open(PROMPTS_CONF).read()
+    first = s.find("[")
+    header = s[:first].rstrip("\n") if first > 0 else ""
+    out = [header, ""]
+    for name in sorted(prompts.DEFAULT_GUIDANCE):
+        out.append("[%s]" % name)
+        out.append("guidance = %s" % as_conf_value(prompts.DEFAULT_GUIDANCE[name]))
+        out.append("")
+    open(PROMPTS_CONF, "w").write("\n".join(out).rstrip("\n") + "\n")
+    print("wrote %d stanza(s) to %s"
+          % (len(prompts.DEFAULT_GUIDANCE), os.path.relpath(PROMPTS_CONF, REPO)))
+
+
 def main():
-    s = open(CONF).read()
+    s = open(SETTINGS_CONF).read()
     stanza = build_stanza()
     marker = "[%s]" % prompts.SETTINGS_STANZA
     if marker in s:
@@ -71,10 +95,11 @@ def main():
         s = s[:start].rstrip("\n") + "\n\n" + stanza
     else:
         s = s.rstrip("\n") + "\n\n" + stanza
-    open(CONF, "w").write(s)
+    open(SETTINGS_CONF, "w").write(s)
     print("wrote [%s] with %d field(s) to %s"
           % (prompts.SETTINGS_STANZA, len(prompts.DEFAULT_GUIDANCE),
-             os.path.relpath(CONF, REPO)))
+             os.path.relpath(SETTINGS_CONF, REPO)))
+    rewrite_prompts_conf()
 
 
 if __name__ == "__main__":

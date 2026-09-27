@@ -39,6 +39,8 @@ than rendering a prompt that looks fine and is not.
 import logging
 import re
 
+import prompt_safety
+
 # Placeholders each guidance template MUST carry, or the model gets no data.
 REQUIRED_PLACEHOLDERS = {
     "ai_detection": ("sample_data",),
@@ -86,9 +88,7 @@ DEFAULT_GUIDANCE = {
     "ai_detection": """
         You are a Splunk expert tasked with analyzing a log sample to suggest field extractions.
         The log sample is:
-        ---
         {sample_data}
-        ---
         {description_block}
         Your instructions are:
         1.  Suggest an appropriate Splunk sourcetype for this data (e.g. 'json', 'syslog',
@@ -195,17 +195,24 @@ def resolve_guidance(name, *candidates):
 
 
 def render(name, values, configured=None, settings_guidance=None):
-    """The full prompt: resolved guidance, substituted, plus the fixed contract.
+    """The full prompt: guidance with fenced data, the safety trailer, the contract.
 
     settings_guidance (the Configuration page) wins over configured
     (cim-plicity_prompts.conf), because the UI is where a customer looks first
     and a value typed there should not be silently outranked by a file.
+
+    Customer data is fenced as untrusted before substitution and the trailer
+    restating that it is data goes AFTER it, because an instruction placed
+    before a large block of hostile text is easier to talk past. See
+    lib/prompt_safety.py. The output contract stays last, since that is the
+    instruction the parser depends on.
     """
     guidance = resolve_guidance(
         name,
         ("the Prompts tab on the Configuration page", settings_guidance),
         ("cim-plicity_prompts.conf", configured))
-    return "%s\n%s" % (substitute(guidance, values).rstrip(), CONTRACTS[name])
+    body = substitute(guidance, prompt_safety.fence_values(values)).rstrip()
+    return "%s\n\n%s\n%s" % (body, prompt_safety.TRAILER, CONTRACTS[name])
 
 
 # The Configuration page's Prompts tab writes one field per prompt into the
