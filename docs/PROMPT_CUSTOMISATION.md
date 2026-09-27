@@ -29,9 +29,15 @@ file. `cim-plicity.log` says which place a rejected value came from.
 ### 1. In the UI
 
 **Configuration → Prompts**, two boxes: *Field extraction guidance* and *CIM mapping
-guidance*. Leave a box empty to fall through to the conf file or the shipped prompt. Saved
-values land in `local/cim-plicity_settings.conf` under `[prompts]`, and take effect on the
-next call with no restart or reload.
+guidance*. They arrive **pre-filled with the prompts the app actually uses**, so you can
+read what it does today and edit from there rather than starting at an empty box.
+
+Saved values land in `local/cim-plicity_settings.conf` under `[prompts]` and take effect
+on the next call, with no restart or reload.
+
+**To go back to the shipped prompt, clear the box and save.** An empty value means "use
+the shipped prompt", so clearing is the undo. If you want the shipped text back in front
+of you to edit again, it is in `default/cim-plicity_settings.conf` under `[prompts]`.
 
 This is the easier route and the one to reach for first. It also **takes effect
 immediately**: UCC saves through a REST handler, which updates splunkd's in-memory conf,

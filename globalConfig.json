@@ -15,7 +15,7 @@
                             "defaultValue": "direct",
                             "options": {
                                 "disableSearch": true,
-                                "items": [
+                                "autoCompleteFields": [
                                     {
                                         "value": "direct",
                                         "label": "Direct (API key)"
@@ -35,12 +35,16 @@
                             ]
                         },
                         {
-                            "type": "text",
+                            "type": "singleSelect",
                             "label": "AI Toolkit connection",
                             "field": "toolkit_connection",
-                            "help": "Only used when the backend is Splunk AI Toolkit. Name of an LLM connection in the AI Toolkit. Leave blank to use your default connection. Note connections are per-user: one that is not shared with you cannot be used.",
+                            "help": "Only used when the backend is Splunk AI Toolkit. The list shows the connections shared with you; connections are per-user, so one that is not shared with you will not appear and cannot be used. Leave blank to use your default connection. Any name can still be typed.",
                             "required": false,
-                            "encrypted": false,
+                            "options": {
+                                "endpointUrl": "cim-plicity/toolkit_connections",
+                                "labelField": "label",
+                                "createSearchChoice": true
+                            },
                             "validators": [
                                 {
                                     "type": "string",
@@ -251,7 +255,7 @@
         "name": "cim-plicity",
         "restRoot": "cim-plicity",
         "navColor": "#1e1633",
-        "version": "1.0.12+2e0e3f9",
+        "version": "1.0.12+65b1e5f",
         "displayName": "CIMPlicity AI",
         "schemaVersion": "0.0.10",
         "supportedThemes": [
