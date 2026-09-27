@@ -22,3 +22,12 @@ tests/__pycache__/
 package-lock.json
 temp-package/
 dist-deploy/
+
+# The bare `build` above matches ANY directory named build, at any depth, which
+# silently swallowed the app's hand-written UCC custom controls: they are SOURCE,
+# not build output, and live under appserver/static/js/build/custom/ because that
+# is where UCC's dynamic import looks for them. Un-ignore each level, since git
+# will not descend into an ignored directory.
+!ucc-app/appserver/static/js/build/
+!ucc-app/appserver/static/js/build/custom/
+!ucc-app/appserver/static/js/build/custom/*.js
