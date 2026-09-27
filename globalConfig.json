@@ -200,46 +200,28 @@
                     "title": "Prompts",
                     "entity": [
                         {
-                            "type": "textarea",
+                            "type": "custom",
                             "label": "Field extraction guidance",
                             "field": "ai_detection_guidance",
-                            "help": "Instructions sent to the model for the ai_detection call. Leave blank to use the shipped prompt. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {sample_data} is required. {description_block} is optional and carries the user's own context note. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
+                            "help": "Instructions sent to the model for the ai_detection call. Use Restore to default to put the shipped prompt back in the box. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {sample_data} is required. {description_block} is optional and carries the user's own context note. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
                             "required": false,
                             "encrypted": false,
-                            "defaultValue": "",
                             "options": {
-                                "rowsMin": 12,
-                                "rowsMax": 30
-                            },
-                            "validators": [
-                                {
-                                    "type": "string",
-                                    "errorMsg": "Guidance must be 8000 characters or fewer",
-                                    "minLength": 0,
-                                    "maxLength": 8000
-                                }
-                            ]
+                                "type": "external",
+                                "src": "ai_detection_prompt"
+                            }
                         },
                         {
-                            "type": "textarea",
+                            "type": "custom",
                             "label": "CIM mapping guidance",
                             "field": "cim_mapping_guidance",
-                            "help": "Instructions sent to the model for the cim_mapping call. Leave blank to use the shipped prompt. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {cim_model}, {available_cim_fields} and {extracted_fields} are all required. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
+                            "help": "Instructions sent to the model for the cim_mapping call. Use Restore to default to put the shipped prompt back in the box. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {cim_model}, {available_cim_fields} and {extracted_fields} are all required. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
                             "required": false,
                             "encrypted": false,
-                            "defaultValue": "",
                             "options": {
-                                "rowsMin": 12,
-                                "rowsMax": 30
-                            },
-                            "validators": [
-                                {
-                                    "type": "string",
-                                    "errorMsg": "Guidance must be 8000 characters or fewer",
-                                    "minLength": 0,
-                                    "maxLength": 8000
-                                }
-                            ]
+                                "type": "external",
+                                "src": "cim_mapping_prompt"
+                            }
                         }
                     ]
                 },

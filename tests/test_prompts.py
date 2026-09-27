@@ -260,7 +260,9 @@ def test_the_globalconfig_prompts_tab_matches_the_fields_the_code_reads():
     expected = {prompts.SETTINGS_FIELD % n for n in prompts.REQUIRED_PLACEHOLDERS}
     assert fields == expected, (fields, expected)
     for e in tab["entity"]:
-        assert e["type"] == "textarea", e["field"]
+        # custom, not textarea: the control renders its own box plus a
+        # Restore to default button (see the custom-control tests below).
+        assert e["type"] == "custom", e["field"]
 
 
 SETTINGS_CONF = os.path.join(REPO, "ucc-app", "default", "cim-plicity_settings.conf")
@@ -307,3 +309,51 @@ def test_the_output_contract_is_absent_from_the_settings_conf_too():
     for name in prompts.DEFAULT_GUIDANCE:
         assert "Do not include any explanatory text" not in stanzas[
             prompts.SETTINGS_FIELD % name]
+
+
+# --- the Prompts tab's custom controls --------------------------------------
+
+def test_each_prompt_field_points_at_its_own_custom_control():
+    # UCC does NOT pass the field name to a custom control's constructor, so the
+    # prompt a control edits is decided by which module the entity points at.
+    # A src pointing at the wrong module would silently edit the other prompt.
+    import json
+    gc = json.load(open(os.path.join(REPO, "globalConfig.json")))
+    tab = next(t for t in gc["pages"]["configuration"]["tabs"]
+               if t.get("name") == prompts.SETTINGS_STANZA)
+    for e in tab["entity"]:
+        assert e["type"] == "custom", e["field"]
+        assert e["options"]["type"] == "external"
+        name = e["field"].replace("_guidance", "")
+        assert e["options"]["src"] == "%s_prompt" % name, e["field"]
+
+
+def test_every_custom_control_module_exists_and_names_its_prompt():
+    import json
+    import re as _re
+    gc = json.load(open(os.path.join(REPO, "globalConfig.json")))
+    tab = next(t for t in gc["pages"]["configuration"]["tabs"]
+               if t.get("name") == prompts.SETTINGS_STANZA)
+    custom_dir = os.path.join(REPO, "ucc-app", "appserver", "static", "js",
+                              "build", "custom")
+    for e in tab["entity"]:
+        src = os.path.join(custom_dir, e["options"]["src"] + ".js")
+        assert os.path.exists(src), src
+        body = open(src).read()
+        name = e["field"].replace("_guidance", "")
+        # makePromptEditor('<prompt>') is what binds the module to its prompt.
+        assert _re.search(r"makePromptEditor\(['\"]%s['\"]\)" % name, body), src
+        assert "export default" in body
+    assert os.path.exists(os.path.join(custom_dir, "prompt_editor_base.js"))
+
+
+def test_the_custom_controls_fetch_defaults_rather_than_embedding_them():
+    # A copy of the guidance in the JavaScript would be a fourth one and would
+    # drift from the prompt the app actually sends.
+    base = os.path.join(REPO, "ucc-app", "appserver", "static", "js", "build",
+                        "custom", "prompt_editor_base.js")
+    body = open(base).read()
+    assert "prompt_defaults" in body
+    for name in prompts.DEFAULT_GUIDANCE:
+        first_line = prompts.DEFAULT_GUIDANCE[name].strip().split("\n")[0][:40]
+        assert first_line not in body, "guidance text leaked into the JS"
