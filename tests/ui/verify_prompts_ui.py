@@ -105,6 +105,10 @@ def main():
         page.screenshot(path=os.path.join(HERE, "ui_1_ai_config.png"), full_page=True)
 
         print("\n=== AI Configuration: the LLM Backend dropdown ===")
+        # The tab LABEL renders a few seconds before the FORM. Waiting on the
+        # label passed on a fast load and failed on a slow one, so wait for a
+        # field inside the form instead.
+        page.wait_for_selector("text=LLM Backend", timeout=60000)
         html = page.content()
         check("no 'No matches' anywhere", "No matches" not in page.inner_text("body"))
         for label in ("Direct (API key)", "Splunk AI Toolkit"):
