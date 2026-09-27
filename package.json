@@ -19,7 +19,7 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=14"
+    "node": ">=20"
   },
   "dependencies": {
     "@splunk/splunk-utils": "^4.0.1"
