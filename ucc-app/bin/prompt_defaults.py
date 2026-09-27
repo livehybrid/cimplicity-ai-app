@@ -42,8 +42,12 @@ class PromptDefaultsHandler(PersistentServerConnectionApplication):
 
     def handle(self, in_string):
         try:
-            return {"payload": json.dumps({"defaults": dict(prompts.DEFAULT_GUIDANCE)}),
-                    "status": 200}
+            # as_shipped so the button reproduces exactly the value in
+            # default/cim-plicity_settings.conf, not a differently-whitespaced
+            # equivalent of it.
+            defaults = {name: prompts.as_shipped(text)
+                        for name, text in prompts.DEFAULT_GUIDANCE.items()}
+            return {"payload": json.dumps({"defaults": defaults}), "status": 200}
         except Exception as exc:  # noqa: BLE001 - never 500 the Configuration page
             logging.error("prompt_defaults failed: %s", exc, exc_info=True)
             return {"payload": json.dumps({"defaults": {}}), "status": 200}

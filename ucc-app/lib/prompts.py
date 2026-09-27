@@ -134,6 +134,18 @@ DEFAULT_GUIDANCE = {
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
 
+def as_shipped(text):
+    """The guidance as a customer sees it: no leading indentation, one line each.
+
+    DEFAULT_GUIDANCE is written as an indented triple-quoted string, so it
+    carries a leading newline and per-line indentation that nothing needs. Both
+    the generated conf stanza and the prompt_defaults endpoint pass it through
+    here, so "Restore to default" reproduces exactly the value the app shipped
+    rather than a differently-whitespaced equivalent.
+    """
+    return "\n".join(l.strip() for l in (text or "").strip("\n").split("\n"))
+
+
 def substitute(template, values):
     """Replace only the known `{placeholder}` tokens, leaving other braces alone.
 

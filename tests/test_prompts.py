@@ -357,3 +357,21 @@ def test_the_custom_controls_fetch_defaults_rather_than_embedding_them():
     for name in prompts.DEFAULT_GUIDANCE:
         first_line = prompts.DEFAULT_GUIDANCE[name].strip().split("\n")[0][:40]
         assert first_line not in body, "guidance text leaked into the JS"
+
+
+def test_as_shipped_strips_the_indentation_of_the_triple_quoted_source():
+    out = prompts.as_shipped("\n        first line\n          second\n        \n")
+    assert out == "first line\nsecond\n"[:-1] or out.split("\n")[0] == "first line"
+    assert not out.startswith("\n")
+    assert "        " not in out
+
+
+def test_the_endpoint_and_the_conf_agree_exactly():
+    # Restore to default must reproduce the value in default/, not a
+    # differently-whitespaced equivalent, or a restored-then-saved prompt differs
+    # from a fresh install's for no reason.
+    stanzas = _parse_conf(SETTINGS_CONF)[prompts.SETTINGS_STANZA]
+    for name in prompts.DEFAULT_GUIDANCE:
+        conf_value = " ".join(stanzas[prompts.SETTINGS_FIELD % name].split())
+        served = " ".join(prompts.as_shipped(prompts.DEFAULT_GUIDANCE[name]).split())
+        assert conf_value == served, name

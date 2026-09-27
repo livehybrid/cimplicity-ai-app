@@ -44,11 +44,11 @@ def as_conf_value(text):
     """Render a guidance template as one Splunk conf value.
 
     Splunk continues a value while the line ends with a backslash and strips
-    leading whitespace on continuations, so the prompt is emitted one logical
-    line per source line rather than trying to preserve indentation.
+    leading whitespace on continuations. prompts.as_shipped does the
+    normalisation so the conf and the prompt_defaults endpoint agree exactly,
+    which is what lets "Restore to default" reproduce the shipped value.
     """
-    lines = [l.strip() for l in text.strip("\n").split("\n")]
-    return " \\\n    ".join(lines)
+    return " \\\n    ".join(prompts.as_shipped(text).split("\n"))
 
 
 def build_stanza():
