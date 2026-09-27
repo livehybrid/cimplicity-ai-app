@@ -35,9 +35,26 @@ read what it does today and edit from there rather than starting at an empty box
 Saved values land in `local/cim-plicity_settings.conf` under `[prompts]` and take effect
 on the next call, with no restart or reload.
 
-**To go back to the shipped prompt, clear the box and save.** An empty value means "use
-the shipped prompt", so clearing is the undo. If you want the shipped text back in front
-of you to edit again, it is in `default/cim-plicity_settings.conf` under `[prompts]`.
+### Going back to the shipped prompt
+
+Clearing the box and saving **restores the behaviour but not the text**, and the
+difference matters. Saving writes to `local/`, and `local` overrides `default`, so an
+empty box becomes an empty *override*: the app falls back to the shipped prompt (the
+handler treats empty as "use the default"), but the box stays blank the next time you
+open it, which looks like the prompt has been lost.
+
+To get the shipped text back in front of you, either copy it from
+`default/cim-plicity_settings.conf` under `[prompts]`, or remove the key from
+`local/cim-plicity_settings.conf` so the default shows through again:
+
+```ini
+# local/cim-plicity_settings.conf -- delete the whole [prompts] stanza, or just
+# the one key you want to reset, then reload:
+#   POST /servicesNS/nobody/cim-plicity/configs/conf-cim-plicity_settings/_reload
+```
+
+A proper *Restore to default* button on the tab is the obvious fix and is not yet
+built.
 
 This is the easier route and the one to reach for first. It also **takes effect
 immediately**: UCC saves through a REST handler, which updates splunkd's in-memory conf,
