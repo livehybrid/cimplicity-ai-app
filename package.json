@@ -22,6 +22,6 @@
     "node": ">=14"
   },
   "dependencies": {
-    "@splunk/splunk-utils": "^3.2.0"
+    "@splunk/splunk-utils": "^4.0.1"
   }
 }

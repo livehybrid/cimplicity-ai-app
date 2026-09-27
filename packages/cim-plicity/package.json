@@ -19,10 +19,10 @@
     "react": "^18.2.0",
     "@splunk/react-page": "^8.0.0",
     "@splunk/ci-mplicity-home": "^0.0.1",
-    "@splunk/splunk-utils": "^3.2.0"
+    "@splunk/splunk-utils": "^4.0.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.2.0",
+    "@babel/core": "^7.29.7",
     "@splunk/babel-preset": "^4.0.0",
     "@splunk/eslint-config": "^5.0.0",
     "@splunk/react-ui": "^5.0.0",
@@ -33,7 +33,7 @@
     "copy-webpack-plugin": "^11.0.0",
     "eslint": "^7.14.0",
     "eslint-config-airbnb": "^18.2.1",
-    "eslint-config-prettier": "^6.15.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-webpack": "^0.13.4",
     "eslint-plugin-import": "^2.22.1",
     "eslint-plugin-jsx-a11y": "^6.4.1",
@@ -45,7 +45,7 @@
     "stylelint": "^15.11.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4",
-    "webpack-merge": "^5.9.0"
+    "webpack-merge": "^6.0.1"
   },
   "engines": {
     "node": ">=14"
