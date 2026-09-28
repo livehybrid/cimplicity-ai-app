@@ -28,7 +28,7 @@
     "@splunk/search-job": "^3.1.0",
     "@splunk/splunk-utils": "^4.0.1",
     "@splunk/themes": "^1.0.0",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.0",
     "prop-types": "^15.8.1"
   },
