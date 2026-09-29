@@ -24,10 +24,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           # 20, not 18: @splunk/splunk-utils 4 and jest-junit 17 both declare
-          # engines node >=20 and yarn refuses to install them on 18. Node 18
-          # has been end-of-life since April 2025. This is the first item of
-          # issue #37; the webpack / copy-webpack-plugin bumps it also covers
-          # are independent and not done here.
+          # engines node >=20 and yarn refuses to install them on 18, and
+          # copy-webpack-plugin 14 sets its own floor at 20.9. Node 18 has been
+          # end-of-life since April 2025. Issue #37.
           node-version: '20'
           cache: 'yarn'
           cache-dependency-path: yarn.lock

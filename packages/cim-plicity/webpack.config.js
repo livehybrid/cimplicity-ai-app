@@ -29,6 +29,20 @@ module.exports = webpackMerge(baseConfig, {
             ],
         }),
     ],
+    optimization: {
+        // webpack 5.110+ minifies CSS and HTML assets as well as JS, because
+        // experiments.css and experiments.html both default to "auto". That
+        // reaches the files CopyWebpackPlugin emits, which here is the whole
+        // UCC-generated app, and both types must be shipped verbatim:
+        //   - appserver/templates/*.html are Mako, not browser HTML. main.html
+        //     carries `${json_decode(splunkd)}` inside a <script>, so the build
+        //     dies with "Unexpected token: punc ({)" from terser.
+        //   - the only CSS in the tree belongs to vendored third-party
+        //     libraries (lib/sklearn/), which we ship unmodified.
+        // JS minification is left on: that is unchanged from webpack 5.99 and
+        // is what shrinks the page bundle.
+        minimizeOptions: { css: false, html: false },
+    },
     // eval-source-map ships eval() into the packaged bundle; dev only
     devtool: process.env.NODE_ENV === 'production' ? false : 'eval-source-map',
 });
