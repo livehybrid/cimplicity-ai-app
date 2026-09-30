@@ -21,7 +21,7 @@
   "main": "CiMplicityHome.js",
   "dependencies": {
     "@babel/eslint-parser": "^7.27.5",
-    "@jest/globals": "^29.7.0",
+    "@jest/globals": "^30.5.2",
     "@splunk/react-icons": "^5.0.0",
     "@splunk/react-toast-notifications": "^0.12.0",
     "@splunk/react-ui": "^5.0.0",
