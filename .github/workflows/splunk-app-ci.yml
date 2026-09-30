@@ -23,11 +23,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          # 20, not 18: @splunk/splunk-utils 4 and jest-junit 17 both declare
-          # engines node >=20 and yarn refuses to install them on 18, and
-          # copy-webpack-plugin 14 sets its own floor at 20.9. Node 18 has been
-          # end-of-life since April 2025. Issue #37.
-          node-version: '20'
+          # Node 20 reached end-of-life on 2026-04-30, and @testing-library/jest-dom 7
+          # declares engines node >=22, so yarn refuses to install it on 20.
+          # Earlier floors still apply: @splunk/splunk-utils 4 and jest-junit 17
+          # need >=20, copy-webpack-plugin 14 needs >=20.9. Issues #37, #47.
+          node-version: '22'
           cache: 'yarn'
           cache-dependency-path: yarn.lock
 
