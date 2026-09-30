@@ -35,7 +35,15 @@ const runCommands = {
 try {
     const isWindows = OS === 'win32' || OS === 'win64';
     const os = isWindows ? 'win32' : 'nix';
-    runCommands[os][arg]();
+    // shelljs does not throw on a non-zero exit, so without this check a failed
+    // webpack run still reported success and only surfaced two steps later as a
+    // missing bundle.
+    const result = runCommands[os][arg]();
+    if (result && result.code !== 0) {
+        shell.echo(`${arg} failed with exit code ${result.code}`);
+        shell.exit(result.code);
+    }
 } catch (error) {
-    shell.echo('Something went wrong');
+    shell.echo(error);
+    shell.exit(1);
 }
