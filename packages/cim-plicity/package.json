@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "styled-components": "^5.3.10",
-    "@splunk/themes": "^1.0.0",
+    "@splunk/themes": "^1.12.0",
     "react": "^18.2.0",
     "@splunk/react-page": "^8.0.0",
     "@splunk/ci-mplicity-home": "^0.0.1",
@@ -25,7 +25,7 @@
     "@babel/core": "^7.29.7",
     "@splunk/babel-preset": "^4.0.0",
     "@splunk/eslint-config": "^5.0.0",
-    "@splunk/react-ui": "^5.0.0",
+    "@splunk/react-ui": "^5.16.0",
     "@splunk/stylelint-config": "^5.0.0",
     "@splunk/webpack-configs": "^7.0.2",
     "babel-eslint": "^10.1.0",
@@ -41,13 +41,13 @@
     "eslint-plugin-react-hooks": "^4.2.0",
     "html-webpack-plugin": "^5.5.3",
     "react-dom": "^18.2.0",
-    "shelljs": "^0.8.5",
+    "shelljs": "^0.10.0",
     "stylelint": "^15.11.0",
     "webpack": "^5.111.1",
     "webpack-cli": "^5.1.4",
     "webpack-merge": "^6.0.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
