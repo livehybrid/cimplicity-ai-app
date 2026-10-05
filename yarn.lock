@@ -1881,16 +1881,7 @@
   resolved "https://registry.npmjs.org/@splunk/eslint-config/-/eslint-config-5.0.0.tgz"
   integrity sha512-5//7NG52+gHtFBHZuVcqqt2F95HeHHlSBlkDjAqFl5gLPQiJX99cED62teAn7ktFrkISIvAGD9wrazMYxly+Bw==
 
-"@splunk/react-icons@^5.0.0":
-  version "5.0.0"
-  resolved "https://registry.npmjs.org/@splunk/react-icons/-/react-icons-5.0.0.tgz"
-  integrity sha512-qUicx0jOj8Q0gQwC5CHUnYZnDECoAboYMwQ9Gp4A20ih/NWETHebFXWaOJqiPsCE03tSphFZh7eB360mw3VZGg==
-  dependencies:
-    "@splunk/ui-utils" "^1.9.0"
-    lodash "^4.17.14"
-    prop-types "^15.6.2"
-
-"@splunk/react-icons@^5.15.0":
+"@splunk/react-icons@^5.0.0", "@splunk/react-icons@^5.15.0", "@splunk/react-icons@^5.9.0":
   version "5.15.0"
   resolved "https://registry.yarnpkg.com/@splunk/react-icons/-/react-icons-5.15.0.tgz#79a5867237a3567c01949f2cce33f08de672e880"
   integrity sha512-xuskaIsho1e9+q90WkbopQxIQikF4iygPKXsDwfiTp5X2vmh9t3Hq2S8wsfcoOCrrsOkofjtsvufAsQ7Og1r9w==
@@ -1911,20 +1902,20 @@
     prop-types "^15.6.2"
     scriptjs "^2.5.8"
 
-"@splunk/react-toast-notifications@^0.12.0":
-  version "0.12.0"
-  resolved "https://registry.npmjs.org/@splunk/react-toast-notifications/-/react-toast-notifications-0.12.0.tgz"
-  integrity sha512-J/8BnsxTxxvvqdJAVgIiCmLURYOgtIaeHy0zzH37LxgoR442gLfkuxuBq3ANUo9I5PSRSO4kB4YA43uy7mW3Kg==
+"@splunk/react-toast-notifications@^0.13.0":
+  version "0.13.0"
+  resolved "https://registry.yarnpkg.com/@splunk/react-toast-notifications/-/react-toast-notifications-0.13.0.tgz#15c3b02721249d6198e0ee2fd1d5a8401e8b2933"
+  integrity sha512-kpC+5+DlokV4YHciteuSE/uS/hFYnzZjnqpj1t6rXZOKBnJrTlnk0Q0DXxRcQBz6GsPIXW63agJrAAos4lu0RQ==
   dependencies:
-    "@splunk/react-icons" "^5.0.0"
-    "@splunk/react-ui" "^5.0.0"
-    "@splunk/themes" "^1.0.0"
-    "@splunk/ui-utils" "^1.9.0"
+    "@splunk/react-icons" "^5.9.0"
+    "@splunk/react-ui" "^5.9.0"
+    "@splunk/themes" "^1.6.0"
+    "@splunk/ui-utils" "^1.12.0"
     lodash "^4.17.14"
     prop-types "^15.6.2"
     react-flip-move "^3.0.1"
 
-"@splunk/react-ui@^5.0.0", "@splunk/react-ui@^5.16.0":
+"@splunk/react-ui@^5.0.0", "@splunk/react-ui@^5.16.0", "@splunk/react-ui@^5.9.0":
   version "5.16.0"
   resolved "https://registry.yarnpkg.com/@splunk/react-ui/-/react-ui-5.16.0.tgz#936ce9f46d76c784f4fe86130fa166c987e5bf71"
   integrity sha512-5AnbiQlmLyJKgmUr1T1b6cVc0/arTC/dP+ELx0CQiKhsneBuYG70UNzV6NMFQB9Jmer9/QqvG0DjxDnv5uAMlg==
@@ -1984,7 +1975,7 @@
     postcss-styled-syntax "^0.6.4"
     stylelint-config-standard "^34.0.0"
 
-"@splunk/themes@^1.0.0", "@splunk/themes@^1.12.0":
+"@splunk/themes@^1.0.0", "@splunk/themes@^1.12.0", "@splunk/themes@^1.6.0":
   version "1.12.0"
   resolved "https://registry.yarnpkg.com/@splunk/themes/-/themes-1.12.0.tgz#93b2f8bcad25e74a89cc9b6bfed18ebfa5520514"
   integrity sha512-zBVOBNjBMCQSa6KKW3SFoeaMVtb3jr6yMLw46OhJ744lQS8fryAIf8kuzPg1v7p0on8u64jFe9Z5pQideYbNiQ==
@@ -1994,21 +1985,13 @@
     colorjs.io "^0.6.1"
     lodash "^4.18.1"
 
-"@splunk/ui-utils@^1.14.0", "@splunk/ui-utils@^1.14.1":
+"@splunk/ui-utils@^1.12.0", "@splunk/ui-utils@^1.14.0", "@splunk/ui-utils@^1.14.1", "@splunk/ui-utils@^1.8.0", "@splunk/ui-utils@^1.9.0":
   version "1.14.1"
   resolved "https://registry.yarnpkg.com/@splunk/ui-utils/-/ui-utils-1.14.1.tgz#0862110b04155e1e2495ecab646d62e6cd2de3f9"
   integrity sha512-sr67renHKlIPkTtNAJ1Eg3dP2+/4kQU4oK+Csuwm0aakMWtEqccODij1gLtdYXJihkNdtxfTCMqNcMwe/NN2cA==
   dependencies:
     keycode "^2.1.9"
     lodash "^4.18.1"
-
-"@splunk/ui-utils@^1.8.0", "@splunk/ui-utils@^1.9.0":
-  version "1.9.0"
-  resolved "https://registry.npmjs.org/@splunk/ui-utils/-/ui-utils-1.9.0.tgz"
-  integrity sha512-xoKQ8YUI/aRF/mOT+pyblQZeHWL0oTYGWsfAO9WJUONgfa+Ajlr+DszeCcMO4FsQeJY5VLcihGQLE+rcRyTcIQ==
-  dependencies:
-    keycode "^2.1.9"
-    lodash "^4.17.21"
 
 "@splunk/webpack-configs@^7.0.2":
   version "7.0.2"
