@@ -6,6 +6,11 @@ on:
       - "**"
     tags:
       - "v*.*.*"
+  workflow_dispatch: {}
+  schedule:
+    # Weekly re-run of main, so it never goes stale unseen against new
+    # Splunk, AppInspect and dependency releases. Tag-only jobs skip it.
+    - cron: "24 5 * * 2"
 
 permissions:
   pull-requests: write
