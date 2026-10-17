@@ -2177,19 +2177,10 @@
   resolved "https://registry.npmjs.org/@splunk/eslint-config/-/eslint-config-5.0.0.tgz"
   integrity sha512-5//7NG52+gHtFBHZuVcqqt2F95HeHHlSBlkDjAqFl5gLPQiJX99cED62teAn7ktFrkISIvAGD9wrazMYxly+Bw==
 
-"@splunk/react-icons@^5.0.0":
-  version "5.0.0"
-  resolved "https://registry.npmjs.org/@splunk/react-icons/-/react-icons-5.0.0.tgz"
-  integrity sha512-qUicx0jOj8Q0gQwC5CHUnYZnDECoAboYMwQ9Gp4A20ih/NWETHebFXWaOJqiPsCE03tSphFZh7eB360mw3VZGg==
-  dependencies:
-    "@splunk/ui-utils" "^1.9.0"
-    lodash "^4.17.14"
-    prop-types "^15.6.2"
-
-"@splunk/react-icons@^5.15.0":
-  version "5.15.0"
-  resolved "https://registry.yarnpkg.com/@splunk/react-icons/-/react-icons-5.15.0.tgz#79a5867237a3567c01949f2cce33f08de672e880"
-  integrity sha512-xuskaIsho1e9+q90WkbopQxIQikF4iygPKXsDwfiTp5X2vmh9t3Hq2S8wsfcoOCrrsOkofjtsvufAsQ7Og1r9w==
+"@splunk/react-icons@^5.0.0", "@splunk/react-icons@^5.16.0", "@splunk/react-icons@^5.9.0":
+  version "5.16.0"
+  resolved "https://registry.yarnpkg.com/@splunk/react-icons/-/react-icons-5.16.0.tgz#f737632780678559c3c6e3f52c9583237a81b7a1"
+  integrity sha512-6ZZeg4//pzG+C+ABNLzv2x0KFP2NaEuN8WhEzjRXw0O8ew/0MZDvZyRMS23KYZ+u9GVUYWTBb4ZLpwPCdCFFrA==
   dependencies:
     "@splunk/ui-utils" "^1.14.1"
     lodash "^4.18.1"
@@ -2207,34 +2198,35 @@
     prop-types "^15.6.2"
     scriptjs "^2.5.8"
 
-"@splunk/react-toast-notifications@^0.12.0":
-  version "0.12.0"
-  resolved "https://registry.npmjs.org/@splunk/react-toast-notifications/-/react-toast-notifications-0.12.0.tgz"
-  integrity sha512-J/8BnsxTxxvvqdJAVgIiCmLURYOgtIaeHy0zzH37LxgoR442gLfkuxuBq3ANUo9I5PSRSO4kB4YA43uy7mW3Kg==
+"@splunk/react-toast-notifications@^0.13.0":
+  version "0.13.0"
+  resolved "https://registry.yarnpkg.com/@splunk/react-toast-notifications/-/react-toast-notifications-0.13.0.tgz#15c3b02721249d6198e0ee2fd1d5a8401e8b2933"
+  integrity sha512-kpC+5+DlokV4YHciteuSE/uS/hFYnzZjnqpj1t6rXZOKBnJrTlnk0Q0DXxRcQBz6GsPIXW63agJrAAos4lu0RQ==
   dependencies:
-    "@splunk/react-icons" "^5.0.0"
-    "@splunk/react-ui" "^5.0.0"
-    "@splunk/themes" "^1.0.0"
-    "@splunk/ui-utils" "^1.9.0"
+    "@splunk/react-icons" "^5.9.0"
+    "@splunk/react-ui" "^5.9.0"
+    "@splunk/themes" "^1.6.0"
+    "@splunk/ui-utils" "^1.12.0"
     lodash "^4.17.14"
     prop-types "^15.6.2"
     react-flip-move "^3.0.1"
 
-"@splunk/react-ui@^5.0.0", "@splunk/react-ui@^5.13.0", "@splunk/react-ui@^5.16.0":
-  version "5.16.0"
-  resolved "https://registry.yarnpkg.com/@splunk/react-ui/-/react-ui-5.16.0.tgz#936ce9f46d76c784f4fe86130fa166c987e5bf71"
-  integrity sha512-5AnbiQlmLyJKgmUr1T1b6cVc0/arTC/dP+ELx0CQiKhsneBuYG70UNzV6NMFQB9Jmer9/QqvG0DjxDnv5uAMlg==
+"@splunk/react-ui@^5.13.0", "@splunk/react-ui@^5.16.0", "@splunk/react-ui@^5.9.0":
+  version "5.17.0"
+  resolved "https://registry.yarnpkg.com/@splunk/react-ui/-/react-ui-5.17.0.tgz#319fcee002e68301039a9666e97ad68a4b7d7b52"
+  integrity sha512-+ndMQZ70OOehL97YLCPORYofvO6+4vrkFhXxfEilp9qkHzlKy0ZZqhKxNBQh4EmsVgwA/UnepuAyZY0MsRF0ew==
   dependencies:
     "@dnd-kit/core" "^6.1.0"
     "@dnd-kit/modifiers" "^7.0.0"
     "@dnd-kit/sortable" "^8.0.0"
     "@dnd-kit/utilities" "^3.2.2"
     "@react-spring/web" "^9.7.5"
-    "@splunk/react-icons" "^5.15.0"
-    "@splunk/themes" "^1.12.0"
+    "@splunk/react-icons" "^5.16.0"
+    "@splunk/themes" "^1.13.0"
     "@splunk/ui-utils" "^1.14.1"
     colorjs.io "^0.6.1"
     decimal.js-light "^2.5.1"
+    diff "^8.0.4"
     intl-tel-input "^25.3.2"
     lodash "^4.18.1"
     moment "^2.29.4"
@@ -2280,17 +2272,17 @@
     postcss-styled-syntax "^0.6.4"
     stylelint-config-standard "^34.0.0"
 
-"@splunk/themes@^1.0.0", "@splunk/themes@^1.10.0", "@splunk/themes@^1.12.0":
-  version "1.12.0"
-  resolved "https://registry.yarnpkg.com/@splunk/themes/-/themes-1.12.0.tgz#93b2f8bcad25e74a89cc9b6bfed18ebfa5520514"
-  integrity sha512-zBVOBNjBMCQSa6KKW3SFoeaMVtb3jr6yMLw46OhJ744lQS8fryAIf8kuzPg1v7p0on8u64jFe9Z5pQideYbNiQ==
+"@splunk/themes@^1.10.0", "@splunk/themes@^1.12.0", "@splunk/themes@^1.13.0", "@splunk/themes@^1.6.0":
+  version "1.13.0"
+  resolved "https://registry.yarnpkg.com/@splunk/themes/-/themes-1.13.0.tgz#3eaa7010acbefb8d1c5a6026546a8083e39bc18f"
+  integrity sha512-+hfw0qy9YQC4hfclNQfKuq5caRjzSqSi4TDaI4tX6Y+rkrez2ZAeYh5wo53+hZYyiAEH37dGgy22alVfiLBh1Q==
   dependencies:
     "@splunk/ui-utils" "^1.14.1"
     color-blend "^2.0.9"
     colorjs.io "^0.6.1"
     lodash "^4.18.1"
 
-"@splunk/ui-utils@^1.14.0", "@splunk/ui-utils@^1.14.1", "@splunk/ui-utils@^1.8.0", "@splunk/ui-utils@^1.9.0":
+"@splunk/ui-utils@^1.12.0", "@splunk/ui-utils@^1.14.0", "@splunk/ui-utils@^1.14.1", "@splunk/ui-utils@^1.8.0":
   version "1.14.1"
   resolved "https://registry.yarnpkg.com/@splunk/ui-utils/-/ui-utils-1.14.1.tgz#0862110b04155e1e2495ecab646d62e6cd2de3f9"
   integrity sha512-sr67renHKlIPkTtNAJ1Eg3dP2+/4kQU4oK+Csuwm0aakMWtEqccODij1gLtdYXJihkNdtxfTCMqNcMwe/NN2cA==
@@ -4510,6 +4502,11 @@ diff@^5.0.0:
   version "5.2.0"
   resolved "https://registry.npmjs.org/diff/-/diff-5.2.0.tgz"
   integrity sha512-uIFDxqpRZGZ6ThOk84hEfqWoHx2devRFvpTZcTHur85vImfaxUbTW9Ryh4CpCuDnToOP1CEtXKIgytHBPVff5A==
+
+diff@^8.0.4:
+  version "8.0.4"
+  resolved "https://registry.yarnpkg.com/diff/-/diff-8.0.4.tgz#4f5baf3188b9b2431117b962eb20ba330fadf696"
+  integrity sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==
 
 dir-glob@^3.0.1:
   version "3.0.1"
