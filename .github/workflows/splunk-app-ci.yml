@@ -282,7 +282,9 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 420
 
       - name: Run integration suite
-        run: python -m pytest integration/ -v -ra
+        # Point at the suite file: integration/stage holds the extracted package,
+        # whose vendored libs ship their own test files.
+        run: python -m pytest integration/test_app_live.py -v -ra
 
       - name: Splunk logs on failure
         if: failure()
