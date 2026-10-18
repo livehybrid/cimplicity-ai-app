@@ -22,3 +22,5 @@ tests/__pycache__/
 package-lock.json
 temp-package/
 dist-deploy/
+
+integration/stage/

@@ -79,9 +79,14 @@ jobs:
         run: yarn install
 
       - name: Run Python tests
+        # Install the shipped lib's pins (scrubadub + its cp39 scikit-learn/scipy/
+        # nltk stack) so the PII tests run instead of skipping on a missing import.
         run: |
-          pip install pytest
-          python3 -m pytest tests/ -q
+          pip install pytest -r ucc-app/lib/requirements.txt
+          python3 -m pytest tests/ -q -rs
+
+      - name: Run JS unit tests (jest)
+        run: yarn --cwd packages/ci-mplicity-home test --ci
 
       - name: Generate UCC components
         run: |
@@ -236,10 +241,67 @@ jobs:
       splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
       splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
   
+  integration-test:
+    name: integration-test (splunk-docker)
+    needs: package
+    # Dependabot actors get no egress/secrets; CLI AppInspect still covers them.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        splunk: ["10.4.0", "10.6.0"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - run: pip install pytest
+
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract package into integration/stage
+        shell: bash
+        run: |
+          mkdir -p integration/stage
+          tar -xzf dist/*.tar.gz -C integration/stage
+          test -f integration/stage/cim-plicity/default/app.conf
+          # The container's splunk uid must read the mount; throwaway copy only.
+          chmod -R 777 integration/stage/cim-plicity
+
+      - name: Start Splunk (wait for health)
+        working-directory: integration
+        env:
+          SPLUNK_IMAGE_TAG: ${{ matrix.splunk }}
+        run: docker compose up -d --wait --wait-timeout 420
+
+      - name: Run integration suite
+        # Point at the suite file: integration/stage holds the extracted package,
+        # whose vendored libs ship their own test files.
+        run: python -m pytest integration/test_app_live.py -v -ra
+
+      - name: Splunk logs on failure
+        if: failure()
+        run: |
+          docker exec -u splunk cimplicity_splunk tail -n 200 /opt/splunk/var/log/splunk/cim-plicity.log || true
+          docker exec -u splunk cimplicity_splunk sh -c 'grep -iE "cim-plicity|persistconn|ExecProcessor" /opt/splunk/var/log/splunk/splunkd.log | tail -n 150' || true
+
+      - name: Tear down
+        if: always()
+        working-directory: integration
+        run: docker compose down -v || true
+
   publish-gh:
     permissions:
       contents: write
     needs:
       - appinspect
       - quality-appinspect-api
+      - integration-test
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
