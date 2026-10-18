@@ -10,9 +10,7 @@ import pytest
 
 from conftest import APP, _loads
 
-# Free text, not key=value: in "user=john.doe@example.com" scrubadub's email
-# detector takes the key too ('=' is legal in an address local part) and
-# returns "user=john.doe@example.com". Recorded as an app finding, not tested here.
+# Free text. The key=value email span case is guarded in test_bugfixes_live.py.
 SAMPLE = "Contact john.doe@example.com about the login from 192.168.10.20 today"
 
 
@@ -30,8 +28,8 @@ def test_app_installed_and_enabled(splunk):
 ])
 def test_settings_handler_serves_stanza(splunk, stanza, key, want):
     # UCC admin_external handler (cim-plicity_rh_settings.py), per stanza as the
-    # Configuration page reads it. (A bare collection GET 404s "name=None" in
-    # splunktaucclib; the UI never makes that call.)
+    # Configuration page reads it. The bare collection GET is covered in
+    # test_bugfixes_live.py.
     status, body = splunk.get(f"/servicesNS/nobody/{APP}/cim-plicity_settings/{stanza}")
     assert status == 200, body[:400]
     assert json.loads(body)["entry"][0]["content"][key] == want

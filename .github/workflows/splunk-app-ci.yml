@@ -282,14 +282,15 @@ jobs:
         run: docker compose up -d --wait --wait-timeout 420
 
       - name: Run integration suite
-        # Point at the suite file: integration/stage holds the extracted package,
-        # whose vendored libs ship their own test files.
-        run: python -m pytest integration/test_app_live.py -v -ra
+        # Point at the suite files: integration/stage holds the extracted package,
+        # whose vendored libs ship their own test files. Order matters:
+        # test_bugfixes_live.py stores and removes an API key, so it runs second.
+        run: python -m pytest integration/test_app_live.py integration/test_bugfixes_live.py -v -ra
 
       - name: Splunk logs on failure
         if: failure()
         run: |
-          docker exec -u splunk cimplicity_splunk tail -n 200 /opt/splunk/var/log/splunk/cim-plicity.log || true
+          docker exec -u splunk cimplicity_splunk sh -c 'ls -la /opt/splunk/var/log/splunk/ | grep -i cim; tail -n 200 /opt/splunk/var/log/splunk/cim-plicity*.log' || true
           docker exec -u splunk cimplicity_splunk sh -c 'grep -iE "cim-plicity|persistconn|ExecProcessor" /opt/splunk/var/log/splunk/splunkd.log | tail -n 150' || true
 
       - name: Tear down

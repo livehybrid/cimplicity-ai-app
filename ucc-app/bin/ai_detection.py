@@ -35,9 +35,10 @@ import json
 
 ADDON_NAME = 'cim-plicity'
 
-# Level is set from the [logging] stanza per request, default INFO
-logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}.log'])
-logging.basicConfig(filename=logfile,level=logging.INFO)
+# $SPLUNK_HOME/var/log/splunk/cim-plicity.log via the app's own logger (see
+# lib/cim_plicity_logging.py); level is set from the [logging] stanza per request
+from cim_plicity_logging import get_logger, set_level
+logger = get_logger("ai_detection")
 
 
 class AiDetection(PersistentServerConnectionApplication):
@@ -66,9 +67,9 @@ class AiDetection(PersistentServerConnectionApplication):
         try:
             cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
             level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
-            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+            set_level(level)
         except Exception:
-            logging.getLogger().setLevel(logging.INFO)
+            set_level("INFO")
 
     def get_ai_secret(self):
         """
@@ -77,7 +78,7 @@ class AiDetection(PersistentServerConnectionApplication):
         try:
             return self.get_ai_settings().get("api_key")
         except Exception as e:
-            logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
+            logger.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
 
     def call_openrouter(self, api_key, sample_data, description=None):
@@ -122,12 +123,12 @@ class AiDetection(PersistentServerConnectionApplication):
         Do not include any explanatory text outside of the JSON object.
         """
         try:
-            logging.info("Sending request to OpenRouter...")
+            logger.info("Sending request to OpenRouter...")
             # Fetch endpoint and model from config, with working defaults
             ai_conf = self.get_ai_settings()
             api_endpoint = ai_conf.get("api_endpoint") or 'https://openrouter.ai/api/v1/chat/completions'
             model = ai_conf.get("model") or 'anthropic/claude-3-5-sonnet-20241022'
-            logging.info(f"Using model: {model}")
+            logger.info(f"Using model: {model}")
 
             response = requests.post(
                 url=api_endpoint,
@@ -146,7 +147,7 @@ class AiDetection(PersistentServerConnectionApplication):
             )
             response.raise_for_status()
             content = response.json()['choices'][0]['message']['content']
-            logging.info(
+            logger.info(
                 "Received successful response from OpenRouter (%d chars)."
                 % (len(content) if isinstance(content, str) else 0)
             )
@@ -156,13 +157,13 @@ class AiDetection(PersistentServerConnectionApplication):
             # the local fallback rather than raising.
             return llm_response.parse_json(content)
         except requests.exceptions.Timeout:
-            logging.error("Request to OpenRouter timed out.")
+            logger.error("Request to OpenRouter timed out.")
             return None
         except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling OpenRouter: {e}")
+            logger.error(f"Error calling OpenRouter: {e}")
             return None
         except Exception as e:
-            logging.error(f"An unexpected error occurred during OpenRouter call: {e}")
+            logger.error(f"An unexpected error occurred during OpenRouter call: {e}")
             return None
 
     def generate_combined_regex(self, fields, selected_field_names, sample_data):
@@ -186,10 +187,10 @@ class AiDetection(PersistentServerConnectionApplication):
                                 'end': match.end()
                             })
                     except re.error as e:
-                        logging.warning(f"Could not position field '{field.get('name')}' in sample: {e}")
+                        logger.warning(f"Could not position field '{field.get('name')}' in sample: {e}")
                         continue
             if not field_positions:
-                logging.warning("No fields could be positioned in the sample; skipping combined regex generation")
+                logger.warning("No fields could be positioned in the sample; skipping combined regex generation")
                 return None
             field_positions.sort(key=lambda x: x['start'])
             last_end = 0
@@ -221,11 +222,11 @@ class AiDetection(PersistentServerConnectionApplication):
                 combined_pattern += escaped_remaining
             return combined_pattern
         except Exception as e:
-            logging.error(f"Error generating combined regex: {e}")
+            logger.error(f"Error generating combined regex: {e}")
             return None
 
     def local_field_extraction(self, sample_data):
-        logging.info("Performing local field extraction.")
+        logger.info("Performing local field extraction.")
         fields = []
         # Regex for common patterns
         patterns = {
@@ -343,22 +344,22 @@ class AiDetection(PersistentServerConnectionApplication):
         @return: String to return in response.  If a dict was passed in,
                  it will automatically be JSON encoded before being returned.
         """
-        logging.info("Starting AI detection rest handler")
+        logger.info("Starting AI detection rest handler")
         try:
             inbound_payload = json.loads(in_string)
         except Exception as e:
-            logging.error(f"Malformed input: {e}")
+            logger.error(f"Malformed input: {e}")
             return {'payload': {'error': 'Malformed input, must be valid JSON.'}, 'status': 400}
         self.system_session_key = inbound_payload.get('system_authtoken')
         if not self.system_session_key:
-            logging.error("No session key provided")
+            logger.error("No session key provided")
             return {'payload': {'error': 'No session key provided'}, 'status': 401}
         self.user_name = (inbound_payload.get('session') or {}).get('user')
         self.apply_log_level()
         try:
             posted_data = json.loads(inbound_payload.get('payload', '{}'))
         except Exception as e:
-            logging.error(f"Malformed payload: {e}")
+            logger.error(f"Malformed payload: {e}")
             return {'payload': {'error': 'Malformed payload, must be valid JSON.'}, 'status': 400}
         try:
             sample_data = posted_data.get('text')
@@ -369,12 +370,12 @@ class AiDetection(PersistentServerConnectionApplication):
             api_key = self.get_ai_secret()
             results = None
             if api_key:
-                logging.info("Using OpenRouter for AI detection.")
+                logger.info("Using OpenRouter for AI detection.")
                 results = self.call_openrouter(api_key, sample_data, description)
             else:
-                logging.warning("No OpenRouter API key; proceeding with local fallback.")
+                logger.warning("No OpenRouter API key; proceeding with local fallback.")
             if not results:
-                logging.info("OpenRouter failed or was skipped. Using local fallback.")
+                logger.info("OpenRouter failed or was skipped. Using local fallback.")
                 results = self.local_field_extraction(sample_data)
             # --- Ensure all fields have a valid name ---
             if results and 'fields' in results:
@@ -399,7 +400,7 @@ class AiDetection(PersistentServerConnectionApplication):
                     results['selected_fields'] = selected_fields
             return {'payload': results, 'status': 200}
         except Exception as e:
-            logging.error(f"Error during AI detection: {e}", exc_info=True)
+            logger.error(f"Error during AI detection: {e}", exc_info=True)
             return {'payload': {'error': 'Internal error during AI detection'}, 'status': 500}
 
     def handleStream(self, handle, in_string):
