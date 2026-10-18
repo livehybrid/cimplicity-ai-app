@@ -148,7 +148,8 @@
                     ]
                 },
                 {
-                    "type": "loggingTab"
+                    "type": "loggingTab",
+                    "field": "log_level"
                 }
             ],
             "title": "Configuration",

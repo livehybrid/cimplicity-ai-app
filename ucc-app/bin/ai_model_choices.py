@@ -39,8 +39,10 @@ import model_catalog
 
 ADDON_NAME = 'cim-plicity'
 
-logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}.log'])
-logging.basicConfig(filename=logfile, level=logging.INFO)
+# $SPLUNK_HOME/var/log/splunk/cim-plicity.log via the app's own logger (see
+# lib/cim_plicity_logging.py)
+from cim_plicity_logging import get_logger
+logger = get_logger("ai_model_choices")
 
 # The persistent process outlives requests, so a small TTL cache keeps the
 # config page snappy while the user tabs between fields.
@@ -73,7 +75,7 @@ class ModelChoicesHandler(PersistentServerConnectionApplication):
             _cache[cache_key] = (time.time(), entries)
             return self._reply(entries)
         except Exception:
-            logging.exception("ai_model_choices failed; serving fallback list")
+            logger.exception("ai_model_choices failed; serving fallback list")
             fallback = model_catalog.fallback_models(model_catalog.PROVIDER_OPENROUTER)
             return self._reply(model_catalog.eai_entries(fallback))
 
@@ -101,7 +103,7 @@ class ModelChoicesHandler(PersistentServerConnectionApplication):
             )
             return cfm.get_conf("cim-plicity_settings").get("ai_configuration") or {}
         except Exception as e:
-            logging.warning(f"ai_model_choices could not read settings: {e}")
+            logger.warning(f"ai_model_choices could not read settings: {e}")
             return {}
 
     @staticmethod

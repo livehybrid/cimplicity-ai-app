@@ -75,3 +75,39 @@ def test_no_pii_found_returns_empty_results():
     assert 'error' not in results, results
     assert results['pii_results'] == []
     assert results['suggestion'] == 'No PII detected.'
+
+
+# key=value text: scrubadub's own EmailDetector allows '=' in the local part
+# and reports "user=alice@example.com", so a mask built from the span hides the
+# key too. The expected spans below come from str.index on the test's own
+# strings, never from the detector, and the mask is applied the way the UI's
+# PIIDetection.jsx does it (substring on start/end), so a fix that trims .text
+# but leaves .start behind still fails.
+KV_CASES = [
+    ("user=alice@example.com action=login", "alice@example.com",
+     "user=[MASKED] action=login"),
+    ("a=1&email=bob@example.co.uk status=ok", "bob@example.co.uk",
+     "a=1&email=[MASKED] status=ok"),
+    ("src=10.0.0.1 user=carol.smith+tag@example.org", "carol.smith+tag@example.org",
+     "src=10.0.0.1 user=[MASKED]"),
+]
+
+
+@pytest.mark.parametrize("text,address,masked", KV_CASES)
+def test_email_span_in_key_value_text_covers_the_address_only(text, address, masked):
+    results = PiiDetectionLogic(SETTINGS_DEFAULT_DETECTORS).detect_pii(text)
+    assert 'error' not in results, results
+    emails = [r for r in results['pii_results'] if '@' in r['text']]
+    assert len(emails) == 1, results['pii_results']
+    want_start = text.index(address)
+    assert (emails[0]['start'], emails[0]['end']) == (want_start, want_start + len(address)), emails
+    assert emails[0]['text'] == address
+    assert text[:emails[0]['start']] + "[MASKED]" + text[emails[0]['end']:] == masked
+
+
+def test_email_in_free_text_is_unchanged():
+    text = "Contact dave@example.com today"
+    results = PiiDetectionLogic(['EmailDetector']).detect_pii(text)
+    spans = [(r['start'], r['end']) for r in results['pii_results']]
+    start = text.index("dave@")
+    assert spans == [(start, start + len("dave@example.com"))]

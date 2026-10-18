@@ -45,9 +45,10 @@ import json
 # Import the abstracted PII detection logic
 from pii_detection_logic import PiiDetectionLogic
 
-# Level is set from the [logging] stanza per request, default INFO
-logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', 'cim-plicity.log'])
-logging.basicConfig(filename=logfile,level=logging.INFO)
+# $SPLUNK_HOME/var/log/splunk/cim-plicity.log via the app's own logger (see
+# lib/cim_plicity_logging.py); level is set from the [logging] stanza per request
+from cim_plicity_logging import get_logger, set_level
+logger = get_logger("pii_detection")
 
 ADDON_NAME = 'cim-plicity'
 
@@ -69,9 +70,9 @@ class PiiDetection(PersistentServerConnectionApplication):
         try:
             cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
             level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
-            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+            set_level(level)
         except Exception:
-            logging.getLogger().setLevel(logging.INFO)
+            set_level("INFO")
 
     def get_detectors_list(self):
         cfm = conf_manager.ConfManager(
@@ -101,22 +102,22 @@ class PiiDetection(PersistentServerConnectionApplication):
         Returns:
             str or dict: String to return in response. If a dict is returned, it will be JSON encoded.
         """
-        logging.info("Starting PII detection handler")
+        logger.info("Starting PII detection handler")
         # Input validation
         try:
             inbound_payload = json.loads(in_string)
         except Exception as e:
-            logging.error(f"Malformed input: {e}")
+            logger.error(f"Malformed input: {e}")
             return {'payload': {'error': 'Malformed input, must be valid JSON.'}, 'status': 400}
         if not isinstance(inbound_payload, dict):
-            logging.error("Input is not a dictionary.")
+            logger.error("Input is not a dictionary.")
             return {'payload': {'error': 'Input must be a JSON object.'}, 'status': 400}
         self.system_session_key = inbound_payload.get('system_authtoken')
         if not self.system_session_key:
-            logging.error("No session key provided")
+            logger.error("No session key provided")
             return {'payload': {'error': 'No session key provided'}, 'status': 401}
         self.apply_log_level()
-        logging.info(f"Payload keys: {list(inbound_payload.keys())}")
+        logger.info(f"Payload keys: {list(inbound_payload.keys())}")
         # Mask PII in logs: only log text length and hash
         posted_data = None
         text_to_analyze = ''
@@ -124,23 +125,23 @@ class PiiDetection(PersistentServerConnectionApplication):
             posted_data = json.loads(inbound_payload.get('payload', '{}'))
             text_to_analyze = posted_data.get('text', '')
         except Exception as e:
-            logging.error(f"Malformed payload: {e}")
+            logger.error(f"Malformed payload: {e}")
             return {'payload': {'error': 'Malformed payload, must be valid JSON.'}, 'status': 400}
         if not text_to_analyze:
-            logging.warning("No text provided for PII detection.")
+            logger.warning("No text provided for PII detection.")
             return {'payload': {'error': 'No text provided for PII detection'}, 'status': 400}
         text_hash = hashlib.sha256(text_to_analyze.encode('utf-8')).hexdigest()
-        logging.info(f"Text to analyze: length={len(text_to_analyze)}, sha256={text_hash}")
+        logger.info(f"Text to analyze: length={len(text_to_analyze)}, sha256={text_hash}")
         
         # Use the abstracted PII detection logic
         try:
             selected_detectors = self.get_detectors_list()
-            logging.info(f"Selected detectors: {selected_detectors}")
+            logger.info(f"Selected detectors: {selected_detectors}")
             
             # Extract custom patterns from the request (patterns themselves are
             # user-supplied, so log only the count)
             custom_patterns = posted_data.get('custom_patterns', [])
-            logging.info(f"Custom patterns supplied: {len(custom_patterns)}")
+            logger.info(f"Custom patterns supplied: {len(custom_patterns)}")
             
             # Create PII detection logic instance with selected detectors and custom patterns
             pii_logic = PiiDetectionLogic(selected_detectors, custom_patterns)
@@ -149,7 +150,7 @@ class PiiDetection(PersistentServerConnectionApplication):
             results = pii_logic.detect_pii(text_to_analyze)
             
             if 'error' in results:
-                logging.error(f"Error during PII analysis: {results['error']}", exc_info=True)
+                logger.error(f"Error during PII analysis: {results['error']}", exc_info=True)
                 return {'payload': {'error': results['error']}, 'status': 500}
             
             # Return the results in the expected format
@@ -160,5 +161,5 @@ class PiiDetection(PersistentServerConnectionApplication):
             return {'payload': response_payload, 'status': 200}
             
         except Exception as e:
-            logging.error(f"Error during PII analysis: {e}", exc_info=True)
+            logger.error(f"Error during PII analysis: {e}", exc_info=True)
             return {'payload': {'error': 'Internal error during PII detection'}, 'status': 500}

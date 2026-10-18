@@ -33,6 +33,12 @@ try:
 except ImportError:
     IpAddressDetector = None
 
+# scrubadub's EmailDetector takes the key in key=value text; this one does not
+from email_detector import KeyValueEmailDetector
+
+# Child of the app logger (cim_plicity_logging.py): lands in cim-plicity.log
+logger = logging.getLogger("cim-plicity.pii_detection_logic")
+
 # Module-level constant for entity type regex patterns
 ENTITY_TYPE_PATTERNS = {
     'EMAIL_ADDRESS': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
@@ -84,6 +90,8 @@ class PiiDetectionLogic:
                 # Handle module-prefixed detectors (e.g., en_GB.NationalInsuranceNumberDetector)
                 if detector_name == 'IpAddressDetector' and IpAddressDetector is not None:
                     detectors.append(IpAddressDetector())
+                elif detector_name == 'EmailDetector':
+                    detectors.append(KeyValueEmailDetector())
                 elif '.' in detector_name:
                     module_path, class_name = detector_name.rsplit('.', 1)
                     module = importlib.import_module(f'scrubadub.detectors.{module_path}')
@@ -93,14 +101,14 @@ class PiiDetectionLogic:
                     detector_cls = getattr(scrubadub.detectors, detector_name)
                     detectors.append(detector_cls())
             except Exception as e:
-                logging.error(f"Could not load detector {detector_name}: {e}")
+                logger.error(f"Could not load detector {detector_name}: {e}")
 
         if not detectors:
             # fallback: add a basic detector to avoid empty list error
-            logging.warning("No detectors loaded successfully, using fallback EmailDetector")
-            detectors.append(EmailDetector())
+            logger.warning("No detectors loaded successfully, using fallback EmailDetector")
+            detectors.append(KeyValueEmailDetector())
 
-        logging.info(f"Successfully loaded {len(detectors)} detectors")
+        logger.info(f"Successfully loaded {len(detectors)} detectors")
         return detectors
     
     def detect_custom_patterns(self, text: str) -> List[Dict[str, Any]]:
@@ -137,10 +145,10 @@ class PiiDetectionLogic:
                     })
                     
             except re.error as e:
-                logging.error(f"Invalid regex pattern '{regex_pattern}': {e}")
+                logger.error(f"Invalid regex pattern '{regex_pattern}': {e}")
                 continue
             except Exception as e:
-                logging.error(f"Error processing custom pattern '{pattern_name}': {e}")
+                logger.error(f"Error processing custom pattern '{pattern_name}': {e}")
                 continue
         
         return results
@@ -204,7 +212,7 @@ class PiiDetectionLogic:
             }
             
         except Exception as e:
-            logging.error(f"Error during PII detection: {e}", exc_info=True)
+            logger.error(f"Error during PII detection: {e}", exc_info=True)
             return {'error': 'Internal error during PII detection'}
     
     def infer_field_name(self, text: str, start: int, end: int, entity_type: str) -> str:

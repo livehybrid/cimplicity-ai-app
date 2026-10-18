@@ -2,7 +2,8 @@ import os
 import json
 import logging
 
-log = logging.getLogger(__name__)
+# Child of the app logger (lib/cim_plicity_logging.py): lands in cim-plicity.log
+log = logging.getLogger("cim-plicity.load_cim_models")
 
 # Hardcoded fallback — only used if Splunk_SA_CIM is not installed
 _FALLBACK_CIM_FIELDS = {

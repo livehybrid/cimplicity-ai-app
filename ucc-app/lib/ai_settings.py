@@ -22,6 +22,9 @@ implementation and it is testable without splunk.persistconn on the path.
 import logging
 import time
 
+# Child of the app logger (cim_plicity_logging.py): lands in cim-plicity.log
+logger = logging.getLogger("cim-plicity.ai_settings")
+
 # 4 attempts over ~1.2s: long enough to clear a transient miss, short enough not
 # to stall the request noticeably when the key genuinely is not there.
 DEFAULT_ATTEMPTS = 4
@@ -45,18 +48,18 @@ def read_ai_configuration(read_stanza, attempts=DEFAULT_ATTEMPTS,
         try:
             settings = read_stanza() or {}
         except Exception as exc:  # noqa: BLE001 - a read error is just a miss to retry
-            logging.warning("ai_configuration read failed (attempt %d/%d): %s",
+            logger.warning("ai_configuration read failed (attempt %d/%d): %s",
                             attempt + 1, attempts, exc)
             settings = {}
         if settings.get("api_key"):
             if attempt:
-                logging.info("ai_configuration api_key read on attempt %d/%d",
+                logger.info("ai_configuration api_key read on attempt %d/%d",
                              attempt + 1, attempts)
             return settings
         last = settings or last
         if attempt < attempts - 1:
             sleep(delay)
-    logging.warning("ai_configuration api_key still empty after %d attempts; "
+    logger.warning("ai_configuration api_key still empty after %d attempts; "
                     "on a Splunk Cloud SHC this can be credential-replication lag",
                     attempts)
     return last

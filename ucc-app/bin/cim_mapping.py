@@ -44,9 +44,10 @@ import llm_response
 
 ADDON_NAME = 'cim-plicity'
 
-# Setup logging (level set from the [logging] stanza per request, default INFO)
-logfile = os.sep.join([os.environ['SPLUNK_HOME'], 'var', 'log', 'splunk', f'{ADDON_NAME}_cim_mapping.log'])
-logging.basicConfig(filename=logfile, level=logging.INFO)
+# $SPLUNK_HOME/var/log/splunk/cim-plicity.log via the app's own logger (see
+# lib/cim_plicity_logging.py); level is set from the [logging] stanza per request
+from cim_plicity_logging import get_logger, set_level
+logger = get_logger("cim_mapping")
 
 from load_cim_models import load_cim_fields
 
@@ -89,15 +90,15 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         try:
             cfm = conf_manager.ConfManager(self.system_session_key, ADDON_NAME)
             level = cfm.get_conf("cim-plicity_settings").get("logging").get("log_level", "INFO")
-            logging.getLogger().setLevel(getattr(logging, str(level).upper(), logging.INFO))
+            set_level(level)
         except Exception:
-            logging.getLogger().setLevel(logging.INFO)
+            set_level("INFO")
 
     def get_ai_secret(self):
         try:
             return self.get_ai_settings().get("api_key")
         except Exception as e:
-            logging.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
+            logger.error(f"Could not retrieve openrouter secret: {e}", exc_info=True)
             return None
 
     def call_openrouter(self, api_key, extracted_fields, cim_model):
@@ -144,7 +145,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             ai_conf = self.get_ai_settings()
             api_endpoint = ai_conf.get("api_endpoint") or "https://openrouter.ai/api/v1/chat/completions"
             model = ai_conf.get("model") or "google/gemini-2.0-flash-001"
-            logging.info(f"Sending CIM mapping request to {api_endpoint} (model {model}) for CIM model: {cim_model}")
+            logger.info(f"Sending CIM mapping request to {api_endpoint} (model {model}) for CIM model: {cim_model}")
             response = requests.post(
                 url=api_endpoint,
                 headers={
@@ -164,7 +165,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
 
             # The response from the LLM might be a JSON object with a key, let's assume 'suggestions'
             content = response.json()['choices'][0]['message']['content']
-            logging.info(f"Received CIM mapping response ({len(content)} chars)")
+            logger.info(f"Received CIM mapping response ({len(content)} chars)")
             
             # The prompt asks for a direct JSON array, but models wrap it: in a
             # markdown fence, under a single key (response_format=json_object
@@ -172,23 +173,23 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             # strictly here discarded correct mappings as unparseable.
             suggestions = llm_response.parse_json_array(content)
             if suggestions is None:
-                logging.error("Failed to decode the direct response from the AI service")
-                logging.debug(f"Undecodable content: {content}")
+                logger.error("Failed to decode the direct response from the AI service")
+                logger.debug(f"Undecodable content: {content}")
                 return {"error": "Failed to parse LLM response"}
             return suggestions
 
         except requests.exceptions.Timeout:
-            logging.error("Request to OpenRouter timed out.")
+            logger.error("Request to OpenRouter timed out.")
             return {"error": "Request to AI service timed out."}
         except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling OpenRouter: {e}")
+            logger.error(f"Error calling OpenRouter: {e}")
             return {"error": "Failed to communicate with AI service."}
         except Exception as e:
-            logging.error(f"An unexpected error occurred during OpenRouter call: {e}")
+            logger.error(f"An unexpected error occurred during OpenRouter call: {e}")
             return {"error": "An unexpected error occurred."}
 
     def handle(self, in_string):
-        logging.info("Starting CIM Mapping REST handler")
+        logger.info("Starting CIM Mapping REST handler")
         try:
             inbound_payload = json.loads(in_string)
             self.system_session_key = inbound_payload.get('system_authtoken')
@@ -214,10 +215,10 @@ class CimMappingHandler(PersistentServerConnectionApplication):
             return {'payload': results, 'status': 200}
 
         except json.JSONDecodeError:
-            logging.error("Invalid JSON received in request.")
+            logger.error("Invalid JSON received in request.")
             return {'payload': {'error': 'Invalid JSON in request payload'}, 'status': 400}
         except Exception as e:
-            logging.error(f"Error during CIM mapping: {e}", exc_info=True)
+            logger.error(f"Error during CIM mapping: {e}", exc_info=True)
             return {'payload': {'error': 'Internal error during CIM mapping'}, 'status': 500}
 
     def handleStream(self, handle, in_string):

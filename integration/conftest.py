@@ -6,6 +6,8 @@ Environment (defaults suit the docker harness):
   SPLUNK_MGMT_URL   https://127.0.0.1:8089
   SPLUNK_USER       admin
   SPLUNK_PASSWORD   Changeme1!
+  SPLUNK_CONTAINER  cimplicity_splunk (docker exec target for on-disk checks)
+  APP_STAGE         integration/stage/cim-plicity (the extracted package)
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import base64
 import json
 import os
 import ssl
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -24,6 +27,9 @@ MGMT = os.environ.get("SPLUNK_MGMT_URL", "https://127.0.0.1:8089").rstrip("/")
 USER = os.environ.get("SPLUNK_USER", "admin")
 PW = os.environ.get("SPLUNK_PASSWORD", "Changeme1!")
 APP = "cim-plicity"
+CONTAINER = os.environ.get("SPLUNK_CONTAINER", "cimplicity_splunk")
+APP_STAGE = os.environ.get(
+    "APP_STAGE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "stage", APP))
 
 _CTX = ssl.create_default_context()
 _CTX.check_hostname = False
@@ -52,6 +58,29 @@ class Splunk:
 
     def post_json(self, path, obj):
         return self.request("POST", path, body=json.dumps(obj).encode(), content_type="application/json")
+
+    def post_form(self, path, fields):
+        body = urllib.parse.urlencode({"output_mode": "json", **fields}).encode()
+        return self.request("POST", path, body=body, content_type="application/x-www-form-urlencoded")
+
+    def remove(self, path):
+        return self.request("DELETE", path, params={"output_mode": "json"})
+
+    def oneshot(self, spl, **params):
+        body = urllib.parse.urlencode({"search": spl, "exec_mode": "oneshot", "output_mode": "json",
+                                       "count": 0, **params}).encode()
+        status, text = self.request("POST", "/services/search/jobs", body=body,
+                                    content_type="application/x-www-form-urlencoded")
+        assert status == 200, text[:400]
+        return json.loads(text).get("results", [])
+
+
+def container_exec(*argv):
+    """Run a command in the Splunk container as the splunk user (it owns
+    var/log/splunk, mode 0700). Returns (returncode, stdout)."""
+    proc = subprocess.run(["docker", "exec", "-u", "splunk", CONTAINER, *argv],
+                          capture_output=True, text=True, timeout=60)
+    return proc.returncode, proc.stdout
 
 
 def _loads(body):
