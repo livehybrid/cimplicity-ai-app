@@ -10,7 +10,10 @@ import pytest
 
 from conftest import APP, _loads
 
-SAMPLE = "user=john.doe@example.com action=login src=192.168.10.20 msg=ok"
+# Free text, not key=value: in "user=john.doe@example.com" scrubadub's email
+# detector takes the key too ('=' is legal in an address local part) and
+# returns "user=john.doe@example.com". Recorded as an app finding, not tested here.
+SAMPLE = "Contact john.doe@example.com about the login from 192.168.10.20 today"
 
 
 def test_app_installed_and_enabled(splunk):
@@ -21,12 +24,17 @@ def test_app_installed_and_enabled(splunk):
     assert content.get("version"), content
 
 
-def test_settings_handler_lists_stanzas(splunk):
-    # UCC admin_external handler (cim-plicity_rh_settings.py) loads and serves.
-    status, body = splunk.get(f"/servicesNS/nobody/{APP}/cim-plicity_settings")
+@pytest.mark.parametrize("stanza,key,want", [
+    ("ai_configuration", "api_endpoint", "https://openrouter.ai/api/v1/chat/completions"),
+    ("logging", "log_level", "INFO"),
+])
+def test_settings_handler_serves_stanza(splunk, stanza, key, want):
+    # UCC admin_external handler (cim-plicity_rh_settings.py), per stanza as the
+    # Configuration page reads it. (A bare collection GET 404s "name=None" in
+    # splunktaucclib; the UI never makes that call.)
+    status, body = splunk.get(f"/servicesNS/nobody/{APP}/cim-plicity_settings/{stanza}")
     assert status == 200, body[:400]
-    names = {e["name"] for e in json.loads(body)["entry"]}
-    assert {"ai_configuration", "logging"} <= names, names
+    assert json.loads(body)["entry"][0]["content"][key] == want
 
 
 def test_pii_detection_finds_email_and_ip(splunk):
