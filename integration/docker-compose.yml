@@ -1,0 +1,23 @@
+services:
+  splunk:
+    image: splunk/splunk:${SPLUNK_IMAGE_TAG:-10.6.0}
+    container_name: cimplicity_splunk
+    hostname: splunk
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:-Changeme1!}
+      SPLUNK_HEC_TOKEN: ""
+    ports:
+      - "8000:8000"
+      - "8089:8089"
+    volumes:
+      # The packaged app (the CI dist tarball, extracted with widened perms so
+      # the container's splunk uid can read it). Never the released artefact.
+      - ./stage/cim-plicity:/opt/splunk/etc/apps/cim-plicity
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8089/services/server/info", "-u", "admin:${SPLUNK_PASSWORD:-Changeme1!}"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
