@@ -6,7 +6,6 @@ Environment (defaults suit the docker harness):
   SPLUNK_MGMT_URL   https://127.0.0.1:8089
   SPLUNK_USER       admin
   SPLUNK_PASSWORD   Changeme1!
-  SPLUNK_CONTAINER  cimplicity_splunk
 """
 from __future__ import annotations
 
@@ -14,7 +13,6 @@ import base64
 import json
 import os
 import ssl
-import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -25,7 +23,6 @@ import pytest
 MGMT = os.environ.get("SPLUNK_MGMT_URL", "https://127.0.0.1:8089").rstrip("/")
 USER = os.environ.get("SPLUNK_USER", "admin")
 PW = os.environ.get("SPLUNK_PASSWORD", "Changeme1!")
-CONTAINER = os.environ.get("SPLUNK_CONTAINER", "cimplicity_splunk")
 APP = "cim-plicity"
 
 _CTX = ssl.create_default_context()
@@ -55,14 +52,6 @@ class Splunk:
 
     def post_json(self, path, obj):
         return self.request("POST", path, body=json.dumps(obj).encode(), content_type="application/json")
-
-    def splunkd_log(self):
-        """splunkd.log read as the splunk user (the default exec user cannot)."""
-        out = subprocess.run(
-            ["docker", "exec", "-u", "splunk", CONTAINER, "cat", "/opt/splunk/var/log/splunk/splunkd.log"],
-            capture_output=True, text=True, check=False)
-        assert out.returncode == 0, out.stderr
-        return out.stdout
 
 
 def _loads(body):

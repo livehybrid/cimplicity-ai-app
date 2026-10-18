@@ -40,7 +40,9 @@ def test_settings_handler_serves_stanza(splunk, stanza, key, want):
 def test_pii_detection_finds_email_and_ip(splunk):
     # Runs the vendored scrubadub -> scikit-learn/scipy/nltk stack inside
     # Splunk's own Python. Those libs are cp39 builds, which is why the handler
-    # pins python.required = 3.9; on another interpreter this import fails.
+    # pins python.required = 3.9. Watched fail: with the handler on 3.13 this and
+    # the next test get 500 "bad character (49) in reply size". splunkd.log does
+    # not record that error, so only the REST response can catch it.
     status, body = splunk.post_json("/services/pii_detection", {"text": SAMPLE})
     assert status == 200, body[:600]
     found = {r["text"] for r in json.loads(body)["pii_results"]}
@@ -74,13 +76,6 @@ def test_model_choices_serves_a_catalogue(splunk):
     assert status == 200, body[:300]
     entries = (_loads(body) or {}).get("entry") or []
     assert entries, body[:300]
-
-
-def test_no_persistconn_protocol_errors(splunk):
-    # The failure mode of an import crash in a persistent handler.
-    bad = [l for l in splunk.splunkd_log().splitlines()
-           if "bad character in reply size" in l]
-    assert not bad, bad[-5:]
 
 
 @pytest.mark.skip(reason="needs an LLM endpoint + API key (AI Toolkit / OpenRouter) configured in "
