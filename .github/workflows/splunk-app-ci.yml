@@ -107,12 +107,12 @@ jobs:
         run: |
           # Update app.conf with the calculated version (both [id] and [launcher] stanzas)
           if [ -f "default/app.conf" ]; then
-            sed -i "s/version = .*/version = ${{ steps.version.outputs.TAG_VERSION }}/g" default/app.conf
+            sed -i "s/version = .*/version = ${{ steps.version.outputs.VERSION_WITH_HASH }}/g" default/app.conf
           fi
           
           # Update app.manifest version if it exists
           if [ -f "app.manifest" ]; then
-            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.TAG_VERSION }}\"/g" app.manifest
+            sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.version.outputs.VERSION_WITH_HASH }}\"/g" app.manifest
           fi
           
           # Update package id to match directory name without version suffix
@@ -181,6 +181,30 @@ jobs:
             echo "Error: stage directory not found after build"
             exit 1
           fi
+
+      - name: Verify release version in the package
+        # Tag builds only. Reads the tarball; the expected version comes from the
+        # ref and git, independently of the version step.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          export WANT_VERSION="${GITHUB_REF#refs/tags/v}+$(git rev-parse --short HEAD)"
+          python3 - dist/*.tar.gz <<'PY'
+          import configparser, json, os, sys, tarfile
+          want = os.environ["WANT_VERSION"]
+          with tarfile.open(sys.argv[1]) as tar:
+              raw = tar.extractfile("cim-plicity/default/app.conf").read().decode()
+              manifest = json.load(tar.extractfile("cim-plicity/app.manifest"))
+          conf = configparser.ConfigParser(interpolation=None, strict=False)
+          conf.read_string(raw)
+          got = {"launcher.version": conf.get("launcher", "version", fallback=None),
+                 "id.version": conf.get("id", "version", fallback=None),
+                 "app.manifest": manifest["info"]["id"]["version"]}
+          print(sys.argv[1], got)
+          bad = [k for k, v in got.items() if v != want]
+          if bad:
+              sys.exit(f"package metadata is wrong for {want}: {bad}")
+          PY
 
       - name: Upload Package Artifact
         uses: actions/upload-artifact@v7
