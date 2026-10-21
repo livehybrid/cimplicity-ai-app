@@ -28,7 +28,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '18'
+          # Node 20 reached end-of-life on 2026-04-30, and @testing-library/jest-dom 7
+          # declares engines node >=22, so yarn refuses to install it on 20.
+          # Earlier floors still apply: @splunk/splunk-utils 4 and jest-junit 17
+          # need >=20, copy-webpack-plugin 14 needs >=20.9. Issues #37, #47.
+          node-version: '22'
           cache: 'yarn'
           cache-dependency-path: yarn.lock
 
@@ -82,7 +86,9 @@ jobs:
         # Install the shipped lib's pins (scrubadub + its cp39 scikit-learn/scipy/
         # nltk stack) so the PII tests run instead of skipping on a missing import.
         run: |
-          pip install pytest -r ucc-app/lib/requirements.txt
+          # requests is a real dependency of lib/llm_client.py (the app vendors it
+          # into lib/ at build time via solnlib), so the tests need it importable.
+          pip install pytest requests -r ucc-app/lib/requirements.txt
           python3 -m pytest tests/ -q -rs
 
       - name: Run JS unit tests (jest)
@@ -148,6 +154,14 @@ jobs:
             fi
             if ! grep -q "^reload\.cim-plicity_settings" default/app.conf; then
               sed -i '/^\[triggers\]/a reload.cim-plicity_settings = simple' default/app.conf
+            fi
+            # Prompt guidance (default/cim-plicity_prompts.conf, overridden in
+            # local/). `simple` is enough: the handlers read it per request via
+            # conf_manager, so a reload is all that is needed for an edit to take
+            # effect without a restart. Also satisfies AppInspect's
+            # check_reload_trigger_for_all_custom_confs for this conf.
+            if [ -f "default/cim-plicity_prompts.conf" ] && ! grep -q "^reload\.cim-plicity_prompts" default/app.conf; then
+              sed -i '/^\[triggers\]/a reload.cim-plicity_prompts = simple' default/app.conf
             fi
           fi
 
