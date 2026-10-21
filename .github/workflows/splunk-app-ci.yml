@@ -260,7 +260,9 @@ jobs:
     needs: package
     # Dependabot actors get no egress/secrets; CLI AppInspect still covers them.
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 because ubuntu-latest (26.04) has no Python 3.9, which the
+    # add-on build and Splunk 10.1-and-earlier parity need.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
