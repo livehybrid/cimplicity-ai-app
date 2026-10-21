@@ -24,7 +24,6 @@ if bin_path not in sys.path:
 
 # Import scrubadub and custom detector
 import scrubadub
-from scrubadub.detectors import CreditCardDetector, EmailDetector, UrlDetector
 
 # Add import for custom IP detector
 try:
@@ -32,22 +31,11 @@ try:
 except ImportError:
     IpAddressDetector = None
 
-# Module-level constant for entity type regex patterns
-ENTITY_TYPE_PATTERNS = {
-    'EMAIL_ADDRESS': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-    'IP_ADDRESS': r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}',
-    'PHONE_NUMBER': r'\d{3}[-.]?\d{3}[-.]?\d{4}',
-    'CREDIT_CARD': r'\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}',
-    'US_SSN': r'\d{3}[-.]?\d{2}[-.]?\d{4}',
-    'DATE_TIME': r'[^\]\s]+',  # For timestamps, be more flexible
-    'PERSON': r'[A-Za-z\s]+',  # For names
-    'URL': r'https?://[^\s"\'<>]+',  # More precise URL pattern - only full URLs with protocol
-}
+# scrubadub's EmailDetector takes the key in key=value text; this one does not
+from email_detector import KeyValueEmailDetector
 
-# Pre-compile regexes for performance
-KV_REGEX = re.compile(r'(\w+)=')
-JSON_REGEX = re.compile(r'"(\w+)"\s*:\s*"')
-APACHE_IP_REGEX = re.compile(r'^\d+\.\d+\.\d+\.\d+')
+# Field-name inference shared with the handler (key immediately preceding the value)
+from pii_detection_logic import infer_field_name
 
 class PiiDetectionTester:
     """
@@ -81,6 +69,8 @@ class PiiDetectionTester:
                 # Handle module-prefixed detectors (e.g., en_GB.NationalInsuranceNumberDetector)
                 if detector_name == 'IpAddressDetector' and IpAddressDetector is not None:
                     detectors.append(IpAddressDetector())
+                elif detector_name == 'EmailDetector':
+                    detectors.append(KeyValueEmailDetector())
                 elif '.' in detector_name:
                     module_path, class_name = detector_name.rsplit('.', 1)
                     module = importlib.import_module(f'scrubadub.detectors.{module_path}')
@@ -94,7 +84,7 @@ class PiiDetectionTester:
         
         if not detectors:
             # fallback: add a basic detector to avoid empty list error
-            detectors.append(EmailDetector())
+            detectors.append(KeyValueEmailDetector())
         
         return detectors
     
@@ -140,43 +130,8 @@ class PiiDetectionTester:
             return {'error': str(e)}
     
     def infer_field_name(self, text: str, start: int, end: int, entity_type: str) -> str:
-        """
-        Try to infer the field name for this PII based on its context in the text.
-        Args:
-            text (str): The full text being analyzed.
-            start (int): Start index of the PII entity.
-            end (int): End index of the PII entity.
-            entity_type (str): The type of PII entity.
-        Returns:
-            str: Inferred field name or entity type as fallback.
-        """
-        # Get some context around the PII
-        context_start = max(0, start - 50)
-        context_end = min(len(text), end + 50)
-        context = text[context_start:context_end]
-        pii_text = text[start:end]
-        
-        # Try key-value format
-        kv_match = KV_REGEX.search(context)
-        if kv_match:
-            return kv_match.group(1)
-        
-        # Try JSON format
-        json_match = JSON_REGEX.search(context)
-        if json_match:
-            return json_match.group(1)
-        
-        # For Apache logs, infer based on position
-        if APACHE_IP_REGEX.match(text.strip()):
-            if start < 20:
-                return 'clientip'
-            elif '[' in context and ']' in context:
-                return 'timestamp'
-            elif '"' in context:
-                return 'request'
-        
-        # Fallback: use entity type as field name
-        return entity_type.lower()
+        """Field name for the PII at text[start:end]; see pii_detection_logic.infer_field_name()."""
+        return infer_field_name(text, start, end, entity_type)
 
 
 def test_pii_detection_standalone():

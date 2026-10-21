@@ -52,9 +52,52 @@ ENTITY_TYPE_PATTERNS = {
 }
 
 # Pre-compile regexes for performance
-KV_REGEX = re.compile(r'(\w+)=')
-JSON_REGEX = re.compile(r'"(\w+)"\s*:\s*"')
 APACHE_IP_REGEX = re.compile(r'^\d+\.\d+\.\d+\.\d+')
+
+# A key that ends exactly where the value starts: key=value, key="value",
+# key='value' or "key": "value". Anchored at the end of the text before the
+# value, so a key elsewhere in the event (src=... earlier, action=... later)
+# is never taken for this value's field.
+PRECEDING_JSON_KEY_REGEX = re.compile(r'"(\w+)"\s*:\s*"$')
+PRECEDING_KV_KEY_REGEX = re.compile(r'(\w+)\s*=\s*(["\']?)$')
+
+# scrubadub's EmailDetector (and KeyValueEmailDetector, which inherits it) is
+# named 'email', not 'EmailDetector'.
+EMAIL_DETECTOR_NAMES = {EmailDetector.name, 'EmailDetector'}
+GENERIC_EMAIL_REGEX = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+
+
+def preceding_key(text: str, start: int):
+    """Return (field, style, quote) for the key immediately preceding
+    text[start], or None. style is 'kv' or 'json'; quote is the quote character
+    opening the value, or ''."""
+    head = text[max(0, start - 200):start]
+    match = PRECEDING_JSON_KEY_REGEX.search(head)
+    if match:
+        return match.group(1), 'json', '"'
+    match = PRECEDING_KV_KEY_REGEX.search(head)
+    if match:
+        return match.group(1), 'kv', match.group(2)
+    return None
+
+
+def infer_field_name(text: str, start: int, end: int, entity_type: str) -> str:
+    """Infer the field name of the PII at text[start:end]: the key immediately
+    preceding the value, else an Apache positional guess, else the entity type."""
+    key = preceding_key(text, start)
+    if key:
+        return key[0]
+
+    context = text[max(0, start - 50):min(len(text), end + 50)]
+    if APACHE_IP_REGEX.match(text.strip()):
+        if start < 20:
+            return 'clientip'
+        elif '[' in context and ']' in context:
+            return 'timestamp'
+        elif '"' in context:
+            return 'request'
+
+    return entity_type.lower()
 
 class PiiDetectionLogic:
     """
@@ -216,43 +259,8 @@ class PiiDetectionLogic:
             return {'error': 'Internal error during PII detection'}
     
     def infer_field_name(self, text: str, start: int, end: int, entity_type: str) -> str:
-        """
-        Try to infer the field name for this PII based on its context in the text.
-        Args:
-            text (str): The full text being analyzed.
-            start (int): Start index of the PII entity.
-            end (int): End index of the PII entity.
-            entity_type (str): The type of PII entity.
-        Returns:
-            str: Inferred field name or entity type as fallback.
-        """
-        # Get some context around the PII
-        context_start = max(0, start - 50)
-        context_end = min(len(text), end + 50)
-        context = text[context_start:context_end]
-        pii_text = text[start:end]
-        
-        # Try key-value format
-        kv_match = KV_REGEX.search(context)
-        if kv_match:
-            return kv_match.group(1)
-        
-        # Try JSON format
-        json_match = JSON_REGEX.search(context)
-        if json_match:
-            return json_match.group(1)
-        
-        # For Apache logs, infer based on position
-        if APACHE_IP_REGEX.match(text.strip()):
-            if start < 20:
-                return 'clientip'
-            elif '[' in context and ']' in context:
-                return 'timestamp'
-            elif '"' in context:
-                return 'request'
-        
-        # Fallback: use entity type as field name
-        return entity_type.lower()
+        """Field name for the PII at text[start:end]; see module infer_field_name()."""
+        return infer_field_name(text, start, end, entity_type)
 
     def generate_regex_for_pii(self, pii_text: str, detector_name: str) -> str:
         """
@@ -269,8 +277,8 @@ class PiiDetectionLogic:
         # Generate patterns based on detector type
         if 'IpAddressDetector' in detector_name:
             return r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
-        elif 'EmailDetector' in detector_name:
-            return r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        elif detector_name in EMAIL_DETECTOR_NAMES:
+            return GENERIC_EMAIL_REGEX
         elif 'CreditCardDetector' in detector_name:
             return r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
         elif 'PhoneDetector' in detector_name:
@@ -303,20 +311,18 @@ def generate_sedcmd_regex(text: str, start: int, end: int, entity_type: str, pii
     context_end = min(len(text), end + 50)
     context = text[context_start:context_end]
     
-    # Try to detect key-value format (field=value)
-    kv_match = KV_REGEX.search(context)
-    if kv_match:
-        field_name = kv_match.group(1)
+    # The key immediately preceding the value (field=value or "field":"value")
+    key = preceding_key(text, start)
+    if key and key[1] == 'kv':
+        field_name, _, quote = key
         value_pattern = get_value_pattern_for_type(entity_type)
         return {
-            'pattern': f'{field_name}=({value_pattern})',
-            'replacement': f'{field_name}=[REDACTED_{entity_type.upper()}]'
+            'pattern': f'{field_name}={quote}({value_pattern})',
+            'replacement': f'{field_name}={quote}[REDACTED_{entity_type.upper()}]'
         }
-    
-    # Try to detect JSON format ("field":"value")
-    json_match = JSON_REGEX.search(context)
-    if json_match:
-        field_name = json_match.group(1)
+
+    if key and key[1] == 'json':
+        field_name = key[0]
         value_pattern = get_value_pattern_for_type(entity_type)
         return {
             'pattern': f'"{field_name}"\\s*:\\s*"({value_pattern})"',

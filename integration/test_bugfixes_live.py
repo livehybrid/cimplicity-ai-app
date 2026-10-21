@@ -2,7 +2,9 @@
 
 1. The bare settings collection GET answered 500 wrapping splunktaucclib's
    "REST Error [404]: Not Found -- name=None" (bin/cim_plicity_settings_handler.py).
-2. PII email spans swallowed the key in key=value text (lib/email_detector.py).
+2. PII email spans swallowed the key in key=value text (lib/email_detector.py),
+   emails were labelled with the first key= nearby and given the escaped literal
+   address as their redaction pattern (lib/pii_detection_logic.py).
 3. cim-plicity.log was never created when cim_mapping.py was the first handler
    the shared persistconn process imported, its lines had no timestamp, and the
    Configuration page's log level was written to a key no handler read
@@ -135,6 +137,20 @@ def test_pii_email_span_in_key_value_text_is_the_address_only(splunk):
     start = text.index("alice@example.com")
     assert (emails[0]["start"], emails[0]["end"]) == (start, start + len("alice@example.com")), emails
     assert text[:emails[0]["start"]] + "#" + text[emails[0]["end"]:] == "user=# action=login"
+
+
+def test_pii_email_field_and_redaction_pattern(splunk):
+    # src= is the first key near the address; the address belongs to user=.
+    import re
+    text = 'src=10.0.0.1 user="alice@example.com" action=login'
+    results = _pii(splunk, text)["pii_results"]
+    start = text.index("alice@example.com")
+    emails = [r for r in results if r["start"] == start]
+    assert len(emails) == 1, results
+    assert emails[0]["field"] == "user", emails
+    # Generic, not the escaped literal: it matches addresses not in the input.
+    pattern = re.compile(emails[0]["regex_pattern"])
+    assert pattern.fullmatch("bob@example.co.uk"), emails[0]["regex_pattern"]
 
 
 # --- 3. logging -------------------------------------------------------------
