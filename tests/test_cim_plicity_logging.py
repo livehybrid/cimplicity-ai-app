@@ -33,6 +33,8 @@ def splunk_home(tmp_path, monkeypatch):
     monkeypatch.setenv("SPLUNK_HOME", str(tmp_path))
     root = logging.getLogger()
     saved = (list(root.handlers), root.level)
+    app = logging.getLogger("cim-plicity")
+    saved_app = (app.propagate, app.level)
     _drop_handlers("cim-plicity")
     # Another handler script (or another app) got to the shared root logger first.
     for h in list(root.handlers):
@@ -44,6 +46,9 @@ def splunk_home(tmp_path, monkeypatch):
     for h in saved[0]:
         root.addHandler(h)
     root.setLevel(saved[1])
+    # Leave the app logger as found: other test files capture its children's
+    # records through the root logger (caplog), which propagate=False would hide.
+    app.propagate, app.level = saved_app
 
 
 def _fresh_module():

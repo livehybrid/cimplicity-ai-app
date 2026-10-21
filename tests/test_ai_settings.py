@@ -74,3 +74,21 @@ def test_all_reads_raise_returns_empty_without_raising():
     slept, sleep = _no_sleep()
     out = ai_settings.read_ai_configuration(read, attempts=2, sleep=sleep)
     assert out == {}
+
+
+def test_toolkit_backend_without_a_key_is_not_retried():
+    # The AI Toolkit backend needs no key, so its absence is not a miss to wait out.
+    read = _reader([{"backend": "splunk_ai_toolkit", "toolkit_connection": ""}])
+    slept, sleep = _no_sleep()
+    out = ai_settings.read_ai_configuration(read, sleep=sleep)
+    assert out["backend"] == "splunk_ai_toolkit"
+    assert read.calls["n"] == 1
+    assert slept == []
+
+
+def test_direct_backend_without_a_key_is_still_retried():
+    # Positive control for the test above: same shape, direct backend, retried.
+    read = _reader([{"backend": "direct"}])
+    slept, sleep = _no_sleep()
+    ai_settings.read_ai_configuration(read, sleep=sleep)
+    assert read.calls["n"] == ai_settings.DEFAULT_ATTEMPTS

@@ -28,6 +28,8 @@ logger = logging.getLogger("cim-plicity.ai_settings")
 # 4 attempts over ~1.2s: long enough to clear a transient miss, short enough not
 # to stall the request noticeably when the key genuinely is not there.
 DEFAULT_ATTEMPTS = 4
+# Same value as llm_client.BACKEND_TOOLKIT (not imported: llm_client needs requests)
+TOOLKIT_BACKEND = "splunk_ai_toolkit"
 DEFAULT_DELAY = 0.4
 
 
@@ -51,6 +53,10 @@ def read_ai_configuration(read_stanza, attempts=DEFAULT_ATTEMPTS,
             logger.warning("ai_configuration read failed (attempt %d/%d): %s",
                             attempt + 1, attempts, exc)
             settings = {}
+        if (settings.get("backend") or "").strip().lower() == TOOLKIT_BACKEND:
+            # The AI Toolkit backend borrows a Toolkit connection: no key is
+            # expected, so an absent one is not a replication miss to wait out.
+            return settings
         if settings.get("api_key"):
             if attempt:
                 logger.info("ai_configuration api_key read on attempt %d/%d",

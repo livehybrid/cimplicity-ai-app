@@ -7,11 +7,59 @@
                     "title": "AI Configuration",
                     "entity": [
                         {
+                            "type": "singleSelect",
+                            "label": "LLM Backend",
+                            "field": "backend",
+                            "help": "Direct calls the LLM API below with your own key. Splunk AI Toolkit borrows an LLM connection configured in the AI Toolkit app instead, so there is no second API key to manage, and on Splunk Cloud it can reach Splunk Hosted Models. The Toolkit route is noticeably slower because each call is dispatched as a search.",
+                            "required": false,
+                            "defaultValue": "direct",
+                            "options": {
+                                "disableSearch": true,
+                                "autoCompleteFields": [
+                                    {
+                                        "value": "direct",
+                                        "label": "Direct (API key)"
+                                    },
+                                    {
+                                        "value": "splunk_ai_toolkit",
+                                        "label": "Splunk AI Toolkit"
+                                    }
+                                ]
+                            },
+                            "validators": [
+                                {
+                                    "type": "regex",
+                                    "errorMsg": "Backend must be either 'direct' or 'splunk_ai_toolkit'",
+                                    "pattern": "^(direct|splunk_ai_toolkit)$"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "singleSelect",
+                            "label": "AI Toolkit connection",
+                            "field": "toolkit_connection",
+                            "help": "Only used when the backend is Splunk AI Toolkit. The list shows the connections shared with you; connections are per-user, so one that is not shared with you will not appear and cannot be used. Leave blank to use your default connection. Any name can still be typed.",
+                            "required": false,
+                            "options": {
+                                "endpointUrl": "cim-plicity/toolkit_connections",
+                                "labelField": "label",
+                                "createSearchChoice": true
+                            },
+                            "validators": [
+                                {
+                                    "type": "string",
+                                    "errorMsg": "Length of connection name should be between 0 and 255",
+                                    "minLength": 0,
+                                    "maxLength": 255
+                                }
+                            ]
+                        },
+                        {
                             "type": "text",
                             "label": "LLM API Endpoint",
                             "field": "api_endpoint",
-                            "help": "e.g. https://openrouter.ai/api/v1/chat/completions",
-                            "required": true,
+                            "help": "e.g. https://openrouter.ai/api/v1/chat/completions Required when the backend is Direct.",
+                            "required": false,
                             "encrypted": false,
                             "validators": [
                                 {
@@ -26,8 +74,8 @@
                             "type": "text",
                             "label": "API key",
                             "field": "api_key",
-                            "help": "API key",
-                            "required": true,
+                            "help": "API key Required when the backend is Direct.",
+                            "required": false,
                             "encrypted": true,
                             "validators": [
                                 {
@@ -42,8 +90,8 @@
                             "type": "singleSelect",
                             "label": "Model",
                             "field": "model",
-                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list.",
-                            "required": true,
+                            "help": "Model ID. The list loads from the provider behind the LLM API Endpoint (OpenRouter, OpenAI, Anthropic or any OpenAI-compatible API). Type to search, or enter any model ID not in the list. Required when the backend is Direct.",
+                            "required": false,
                             "options": {
                                 "endpointUrl": "cim-plicity/ai_model_choices",
                                 "labelField": "label",
@@ -148,6 +196,36 @@
                     ]
                 },
                 {
+                    "name": "prompts",
+                    "title": "Prompts",
+                    "entity": [
+                        {
+                            "type": "custom",
+                            "label": "Field extraction guidance",
+                            "field": "ai_detection_guidance",
+                            "help": "Instructions sent to the model for the ai_detection call. Use Restore to default to put the shipped prompt back in the box. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {sample_data} is required. {description_block} is optional and carries the user's own context note. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
+                            "required": false,
+                            "encrypted": false,
+                            "options": {
+                                "type": "external",
+                                "src": "ai_detection_prompt"
+                            }
+                        },
+                        {
+                            "type": "custom",
+                            "label": "CIM mapping guidance",
+                            "field": "cim_mapping_guidance",
+                            "help": "Instructions sent to the model for the cim_mapping call. Use Restore to default to put the shipped prompt back in the box. The JSON output contract is appended automatically and is not editable, because every parser downstream depends on that exact shape. Placeholders: {cim_model}, {available_cim_fields} and {extracted_fields} are all required. Any other brace, including example JSON you paste, is left alone. A value missing a required placeholder is ignored in favour of the shipped prompt, and the reason is logged to cim-plicity.log.",
+                            "required": false,
+                            "encrypted": false,
+                            "options": {
+                                "type": "external",
+                                "src": "cim_mapping_prompt"
+                            }
+                        }
+                    ]
+                },
+                {
                     "type": "loggingTab",
                     "field": "log_level"
                 }
@@ -160,7 +238,7 @@
         "name": "cim-plicity",
         "restRoot": "cim-plicity",
         "navColor": "#1e1633",
-        "version": "1.0.4+d01b087",
+        "version": "1.0.12+2e899b7",
         "displayName": "CIMPlicity AI",
         "schemaVersion": "0.0.10",
         "supportedThemes": [

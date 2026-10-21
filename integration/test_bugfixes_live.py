@@ -72,15 +72,24 @@ def _pii(splunk, text):
 
 def test_settings_collection_lists_every_stanza(splunk):
     shipped = _shipped_settings()
-    assert set(shipped) == {"ai_configuration", "logging"}, shipped
+    assert set(shipped) == {"ai_configuration", "logging", "prompts"}, shipped
 
     status, body = splunk.get(SETTINGS)
     assert status == 200, body[:500]
     listed = _entries(body)
     assert set(listed) == set(shipped), listed.keys()
     for stanza, keys in shipped.items():
+        if stanza == "prompts":
+            continue  # multi-line conf values: configparser cannot join them as Splunk does
         for key, value in keys.items():
             assert listed[stanza].get(key) == value, (stanza, key, listed[stanza])
+    # The prompts are compared with splunkd's own conf endpoint instead.
+    status, body = splunk.get(f"/servicesNS/nobody/{APP}/configs/conf-cim-plicity_settings/prompts")
+    assert status == 200, body[:300]
+    conf = _entries(body)["prompts"]
+    for key in shipped["prompts"]:
+        assert listed["prompts"].get(key) == conf.get(key), key
+        assert conf.get(key), key
 
 
 def test_settings_collection_agrees_with_per_stanza_reads(splunk):
@@ -89,7 +98,7 @@ def test_settings_collection_agrees_with_per_stanza_reads(splunk):
     status, body = splunk.get(SETTINGS)
     assert status == 200, body[:500]
     listed = _entries(body)
-    for stanza in ("ai_configuration", "logging"):
+    for stanza in ("ai_configuration", "logging", "prompts"):
         status, one = splunk.get(f"{SETTINGS}/{stanza}")
         assert status == 200, one[:300]
         assert _entries(one)[stanza] == listed[stanza]
