@@ -59,6 +59,8 @@ _LLM_ERRORS = {
     "timeout": "Request to AI service timed out.",
     "transport": "Failed to communicate with AI service.",
     "bad_response": "Failed to parse LLM response",
+    # lib/llm_toolkit: `| ai` is an unknown command, so the AI Toolkit is absent
+    "unavailable": "The Splunk AI Toolkit is not available on this instance.",
 }
 
 from load_cim_models import load_cim_fields
@@ -140,6 +142,15 @@ class CimMappingHandler(PersistentServerConnectionApplication):
         return (prompts.read_settings_guidance(read_settings, name),
                 prompts.read_configured(read_prompts_conf, name))
 
+    def uses_toolkit(self):
+        """True when the AI Toolkit backend is selected: it borrows a Toolkit
+        connection, so no API key is needed (docs/LLM_BACKENDS.md)."""
+        try:
+            backend = (self.get_ai_settings() or {}).get("backend") or ""
+        except Exception:  # noqa: BLE001 - unreadable settings mean the default, direct
+            return False
+        return backend.strip().lower() == llm_client.BACKEND_TOOLKIT
+
     def get_ai_secret(self):
         try:
             return self.get_ai_settings().get("api_key")
@@ -218,7 +229,7 @@ class CimMappingHandler(PersistentServerConnectionApplication):
                 return {'payload': {'error': 'Missing required parameters: extractedFields and cimModel'}, 'status': 400}
 
             api_key = self.get_ai_secret()
-            if not api_key:
+            if not api_key and not self.uses_toolkit():
                 return {'payload': {'error': 'AI service is not configured.'}, 'status': 500}
 
             results = self.call_openrouter(api_key, extracted_fields, cim_model)

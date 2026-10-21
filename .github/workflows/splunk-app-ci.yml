@@ -299,7 +299,7 @@ jobs:
         # Point at the suite files: integration/stage holds the extracted package,
         # whose vendored libs ship their own test files. Order matters:
         # test_bugfixes_live.py stores and removes an API key, so it runs second.
-        run: python -m pytest integration/test_app_live.py integration/test_bugfixes_live.py -v -ra
+        run: python -m pytest integration/test_app_live.py integration/test_bugfixes_live.py integration/test_develop_live.py -v -ra
 
       - name: Splunk logs on failure
         if: failure()

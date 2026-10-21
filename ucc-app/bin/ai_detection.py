@@ -91,6 +91,15 @@ class AiDetection(PersistentServerConnectionApplication):
             logger.warning("Could not build a search runner: %s", exc)
             return None
 
+    def uses_toolkit(self):
+        """True when the AI Toolkit backend is selected: it borrows a Toolkit
+        connection, so no API key is needed (docs/LLM_BACKENDS.md)."""
+        try:
+            backend = (self.get_ai_settings() or {}).get("backend") or ""
+        except Exception:  # noqa: BLE001 - unreadable settings mean the default, direct
+            return False
+        return backend.strip().lower() == llm_client.BACKEND_TOOLKIT
+
     def get_ai_secret(self):
         """
         Retrieves the OpenRouter API key from Splunk's credential store.
@@ -360,8 +369,8 @@ class AiDetection(PersistentServerConnectionApplication):
                 return {'payload': {'error': 'No text provided for AI detection'}, 'status': 400}
             api_key = self.get_ai_secret()
             results = None
-            if api_key:
-                logger.info("Using OpenRouter for AI detection.")
+            if api_key or self.uses_toolkit():
+                logger.info("Using the configured LLM backend for AI detection.")
                 results = self.call_openrouter(api_key, sample_data, description)
             else:
                 logger.warning("No OpenRouter API key; proceeding with local fallback.")
