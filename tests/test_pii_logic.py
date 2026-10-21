@@ -111,3 +111,39 @@ def test_email_in_free_text_is_unchanged():
     spans = [(r['start'], r['end']) for r in results['pii_results']]
     start = text.index("dave@")
     assert spans == [(start, start + len("dave@example.com"))]
+
+
+# Field name: the key immediately preceding the value, never the first key=
+# in the surrounding window. The expected names are written out by hand from
+# each test string; the "wrong" key is placed where the old window search
+# would find it first (earlier in the event, or after the value).
+FIELD_CASES = [
+    ('src=10.0.0.1 user="alice@example.com"', "alice@example.com", "user"),
+    ("a=1&email=bob@example.co.uk status=ok", "bob@example.co.uk", "email"),
+    ('{"src": "10.0.0.1", "user": "carol@example.org"}', "carol@example.org", "user"),
+    # nothing immediately before the value: the type, not the later action= key
+    ("login by dave@example.com action=login", "dave@example.com", "email"),
+]
+
+
+@pytest.mark.parametrize("text,address,field", FIELD_CASES)
+def test_email_is_labelled_with_the_key_immediately_preceding_it(text, address, field):
+    results = PiiDetectionLogic(['EmailDetector']).detect_pii(text)
+    assert 'error' not in results, results
+    start = text.index(address)
+    hits = [r for r in results['pii_results'] if r['start'] == start]
+    assert len(hits) == 1, results['pii_results']
+    assert hits[0]['field'] == field, hits
+
+
+def test_email_redaction_pattern_is_generic_not_the_literal_address():
+    import re
+    results = PiiDetectionLogic(['EmailDetector']).detect_pii("user=alice@example.com action=login")
+    emails = [r for r in results['pii_results'] if '@' in r['text']]
+    assert len(emails) == 1, results['pii_results']
+    pattern = re.compile(emails[0]['regex_pattern'])
+    # Addresses that are not in the input: a literal pattern matches none of them.
+    for other in ("bob@example.co.uk", "Carol.Smith+tag@Example.ORG"):
+        assert pattern.fullmatch(other), (emails[0]['regex_pattern'], other)
+    # Used as a SEDCMD over key=value text, it leaves the key alone.
+    assert pattern.sub("#", "user=zed@example.net action=login") == "user=# action=login"
