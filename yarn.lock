@@ -5848,9 +5848,9 @@ html-tags@^3.3.1:
   integrity sha512-ztqyC3kLto0e9WbNp0aeP+M3kTt+nbaIveGmUxAtZa+8iFgKLUOD4YKM5j+f3QD89bra7UeumolZHKuOXnTmeQ==
 
 html-webpack-plugin@^5.5.3:
-  version "5.6.3"
-  resolved "https://registry.npmjs.org/html-webpack-plugin/-/html-webpack-plugin-5.6.3.tgz"
-  integrity sha512-QSf1yjtSAsmf7rYBV7XX86uua4W/vkhIt0xNXKbsi2foEeW7vjJQz4bhnpL3xH+l1ryl1680uNv968Z+X6jSYg==
+  version "5.6.8"
+  resolved "https://registry.yarnpkg.com/html-webpack-plugin/-/html-webpack-plugin-5.6.8.tgz#5425dbc63eb533ffa59e92342be94894a125fc23"
+  integrity sha512-MZmKQcTnhEh1SPSyMiEytIeDZDUoBZVorNHivQGXMASHf/BSGGOrKa2xQ5bGx3TCe1n109ecCt+cpww7wwWhKA==
   dependencies:
     "@types/html-minifier-terser" "^6.0.0"
     html-minifier-terser "^6.0.2"
@@ -10241,12 +10241,7 @@ tapable@^0.1.8:
   resolved "https://registry.npmjs.org/tapable/-/tapable-0.1.10.tgz"
   integrity sha512-jX8Et4hHg57mug1/079yitEKWGB3LCwoxByLsNim89LABq8NqgiX+6iYVOsq0vX8uJHkU+DZ5fnq95f800bEsQ==
 
-tapable@^2.0.0:
-  version "2.2.2"
-  resolved "https://registry.npmjs.org/tapable/-/tapable-2.2.2.tgz"
-  integrity sha512-Re10+NauLTMCudc7T5WLFLAwDhQ0JWdrMK+9B2M8zR5hRExKmsRDCBA7/aV/pNJFltmBFO5BAMlQFi/vq3nKOg==
-
-tapable@^2.3.0, tapable@^2.3.3:
+tapable@^2.0.0, tapable@^2.3.0, tapable@^2.3.3:
   version "2.3.3"
   resolved "https://registry.yarnpkg.com/tapable/-/tapable-2.3.3.tgz#5da7c9992c46038221267985ab28421a8879f160"
   integrity sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==
