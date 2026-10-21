@@ -13,14 +13,12 @@ What it can prove without one:
 Expected values come from splunkd's own conf endpoint and from cim-plicity.log
 read with docker exec, never from the handlers under test.
 """
-import configparser
 import json
-import os
 import uuid
 
 import pytest
 
-from conftest import APP, APP_STAGE, _loads, container_exec
+from conftest import APP, _loads, container_exec
 
 SETTINGS = f"/servicesNS/nobody/{APP}/cim-plicity_settings"
 CONF = f"/servicesNS/nobody/{APP}/configs/conf-cim-plicity_settings"
@@ -38,12 +36,6 @@ def _conf_stanza(splunk, stanza):
     return _entries(body)[stanza]
 
 
-def _shipped_ai_configuration():
-    conf = configparser.ConfigParser(interpolation=None, strict=False)
-    conf.read(os.path.join(APP_STAGE, "default", "cim-plicity_settings.conf"))
-    return dict(conf.items("ai_configuration"))
-
-
 def _toolkit_lines():
     code, out = container_exec("cat", LOG_PATH)
     assert code == 0, f"{LOG_PATH} does not exist in the container"
@@ -56,8 +48,12 @@ def test_prompt_defaults_serve_the_prompt_splunkd_ships(splunk):
     defaults = json.loads(body)["defaults"]
     assert set(defaults) == {"ai_detection", "cim_mapping"}, defaults.keys()
     shipped = _conf_stanza(splunk, "prompts")
+    # splunkd keeps each continuation line's indentation and trailing space;
+    # the button offers the same lines without it.
+    def lines(text):
+        return [line.strip() for line in text.strip().splitlines()]
     for name, text in defaults.items():
-        assert text and text == shipped[f"{name}_guidance"], name
+        assert text and lines(text) == lines(shipped[f"{name}_guidance"]), name
 
 
 def test_toolkit_connections_are_empty_without_the_ai_toolkit(splunk):
@@ -79,16 +75,30 @@ def test_prompts_tab_saves_through_the_settings_handler(splunk):
     assert marker not in _conf_stanza(splunk, "prompts")["cim_mapping_guidance"]
 
 
+def _not_configured(splunk):
+    status, body = splunk.post_json(
+        "/services/cim_mapping",
+        {"extractedFields": [{"name": "user", "value": "john"}], "cimModel": "authentication"})
+    return status == 500 and "AI service is not configured" in body, (status, body[:300])
+
+
+def test_direct_backend_without_a_key_is_not_configured_before(splunk):
+    # Positive control for the Toolkit tests: no key, direct backend.
+    ok, detail = _not_configured(splunk)
+    assert ok, detail
+
+
 @pytest.fixture
 def toolkit_backend(splunk):
-    shipped = _shipped_ai_configuration()
-    fields = {"api_endpoint": shipped["api_endpoint"], "model": shipped["model"]}
-    status, body = splunk.post_form(f"{SETTINGS}/ai_configuration",
-                                    {**fields, "backend": "splunk_ai_toolkit"})
+    # Set through splunkd's conf endpoint, not the UCC handler: saving the
+    # ai_configuration tab without an api_key leaves a truthy key behind, which
+    # would let these tests pass with the key check still in place.
+    ok, detail = _not_configured(splunk)
+    assert ok, f"precondition: no API key configured; {detail}"
+    status, body = splunk.post_form(f"{CONF}/ai_configuration", {"backend": "splunk_ai_toolkit"})
     assert status == 200, body[:400]
-    assert _conf_stanza(splunk, "ai_configuration").get("backend") == "splunk_ai_toolkit"
     yield
-    status, body = splunk.post_form(f"{SETTINGS}/ai_configuration", {**fields, "backend": "direct"})
+    status, body = splunk.post_form(f"{CONF}/ai_configuration", {"backend": "direct"})
     assert status == 200, body[:400]
 
 
@@ -112,10 +122,7 @@ def test_ai_detection_on_the_toolkit_backend_needs_no_api_key(splunk, toolkit_ba
     assert _toolkit_lines() > before, body[:300]
 
 
-def test_direct_backend_without_a_key_is_still_not_configured(splunk):
-    # Positive control for the two tests above, after their fixture restored direct.
-    assert _conf_stanza(splunk, "ai_configuration").get("backend") in ("direct", "", None)
-    status, body = splunk.post_json(
-        "/services/cim_mapping",
-        {"extractedFields": [{"name": "user", "value": "john"}], "cimModel": "authentication"})
-    assert status == 500 and "AI service is not configured" in body, body[:300]
+def test_direct_backend_without_a_key_is_not_configured_after(splunk):
+    assert _conf_stanza(splunk, "ai_configuration").get("backend") == "direct"
+    ok, detail = _not_configured(splunk)
+    assert ok, detail
