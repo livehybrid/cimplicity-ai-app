@@ -55,3 +55,13 @@ def test_generate_sedcmd_regex_json_format():
     assert rule['replacement'] == '"email":"[REDACTED_EMAIL_ADDRESS]"'
     match = re.search(rule['pattern'], text)
     assert match and match.group(1) == pii, rule
+
+
+def test_generate_sedcmd_regex_uses_the_key_immediately_preceding_the_value():
+    # src= is the first key in the window; the email belongs to user=
+    text = 'src=10.0.0.1 user="john.doe@example.com" action=login'
+    pii = 'john.doe@example.com'
+    start = text.index(pii)
+    rule = generate_sedcmd_regex(text, start, start + len(pii), 'EMAIL_ADDRESS', pii)
+    assert re.sub(rule['pattern'], rule['replacement'], text) == \
+        'src=10.0.0.1 user="[REDACTED_EMAIL_ADDRESS]" action=login', rule
