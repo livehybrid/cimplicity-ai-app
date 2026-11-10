@@ -18,6 +18,15 @@ permissions:
   checks: write
   contents: write
 
+# Cancel a superseded run on the same branch or pull request, so CI never
+# spends time on code that has already been replaced. The default branch is
+# never cancelled: every push there gets its own complete run, because a
+# cancelled run on a branch that deploys or releases can let commits go out
+# unchecked (haloclock-app, 13 Oct 2026).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+
 jobs:
   package:
     runs-on: self-hosted
