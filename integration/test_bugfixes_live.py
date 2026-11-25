@@ -156,9 +156,9 @@ def test_pii_email_field_and_redaction_pattern(splunk):
 # --- 3. logging -------------------------------------------------------------
 
 def _restart_persistent_handlers():
-    """Kill splunkd's shared Python 3.9 persistconn process so the next request
+    """Kill splunkd's shared Python 3.13 persistconn process so the next request
     starts a fresh one; splunkd respawns it on demand."""
-    container_exec("sh", "-c", "kill $(pgrep -f '[p]ython3.9 .*persistconn/appserver.py') 2>/dev/null; true")
+    container_exec("sh", "-c", "kill $(pgrep -f '[p]ython3.13 .*persistconn/appserver.py') 2>/dev/null; true")
 
 
 def test_logs_land_in_cim_plicity_log_when_cim_mapping_loads_first(splunk):

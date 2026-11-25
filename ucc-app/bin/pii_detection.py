@@ -26,7 +26,7 @@ bin_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 # lib/3rdparty/<platform> from globalConfig os-dependentLibraries, NOT lib/.
 # UCC's generated import_declare_test.py is meant to add this but has a
 # "39" == "3.9" version-string bug, so add it explicitly here.
-thirdparty_path = os.path.join(lib_path, '3rdparty', 'linux_lib_py39')
+thirdparty_path = os.path.join(lib_path, '3rdparty', 'linux_lib_py313')
 
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
