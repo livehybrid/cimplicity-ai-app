@@ -48,7 +48,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.9"
+          # Build on 3.13: the handlers declare python.required = 3.13 and
+          # ucc-gen vendors compiled libraries (numpy, scipy, scikit-learn,
+          # regex) for THIS interpreter.
+          python-version: "3.13"
 
       - name: Install UCC Framework
         # Version lives in build-requirements.txt so Dependabot bumps it (it
@@ -92,7 +95,7 @@ jobs:
         run: yarn install
 
       - name: Run Python tests
-        # Install the shipped lib's pins (scrubadub + its cp39 scikit-learn/scipy/
+        # Install the shipped lib's pins (scrubadub + its cp313 scikit-learn/scipy/
         # nltk stack) so the PII tests run instead of skipping on a missing import.
         run: |
           # requests is a real dependency of lib/llm_client.py (the app vendors it
@@ -269,13 +272,13 @@ jobs:
     needs: package
     # Dependabot actors get no egress/secrets; CLI AppInspect still covers them.
     if: github.actor != 'dependabot[bot]'
-    # ubuntu-24.04 because ubuntu-latest (26.04) has no Python 3.9, which the
-    # add-on build and Splunk 10.1-and-earlier parity need.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        splunk: ["10.4.0", "10.6.0"]
+        # 10.2 is the oldest Splunk with Python 3.13, which the handlers
+        # require; 10.0 and 10.1 run 3.9 only and are not supported.
+        splunk: ["10.2.9", "10.6.0"]
     steps:
       - uses: actions/checkout@v7
 

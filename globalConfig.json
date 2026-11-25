@@ -248,21 +248,21 @@
         "os-dependentLibraries": [
             {
                 "name": "regex",
-                "version": "2024.11.6",
+                "version": "2026.11.24",
                 "dependencies": true,
-                "platform": "manylinux_2_17_x86_64",
-                "python_version": "3.9",
+                "platform": "manylinux_2_28_x86_64",
+                "python_version": "3.13",
                 "os": "linux",
-                "target": "3rdparty/linux_lib_py39"
+                "target": "3rdparty/linux_lib_py313"
             },
             {
                 "name": "numpy",
-                "version": "1.26.4",
+                "version": "2.5.5",
                 "dependencies": true,
-                "platform": "manylinux_2_17_x86_64",
-                "python_version": "3.9",
+                "platform": "manylinux_2_28_x86_64",
+                "python_version": "3.13",
                 "os": "linux",
-                "target": "3rdparty/linux_lib_py39"
+                "target": "3rdparty/linux_lib_py313"
             }
         ]
     }

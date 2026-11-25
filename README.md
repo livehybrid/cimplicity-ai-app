@@ -29,7 +29,7 @@ Check out the app at SplunkBase [https://splunkbase.splunk.com/app/7945](https:/
 ### Prerequisites
 
 - Splunk Enterprise 9.0 or later
-- Python 3.9 (for backend services)
+- Splunk 10.2 or later (the backend runs on Python 3.13)
 - Node.js 14+ (for development)
 
 ### Step 1: Install the App

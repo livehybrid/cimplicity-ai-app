@@ -37,10 +37,11 @@ def test_settings_handler_serves_stanza(splunk, stanza, key, want):
 
 def test_pii_detection_finds_email_and_ip(splunk):
     # Runs the vendored scrubadub -> scikit-learn/scipy/nltk stack inside
-    # Splunk's own Python. Those libs are cp39 builds, which is why the handler
-    # pins python.required = 3.9. Watched fail: with the handler on 3.13 this and
-    # the next test get 500 "bad character (49) in reply size". splunkd.log does
-    # not record that error, so only the REST response can catch it.
+    # Splunk's own Python. Those libs are cp313 builds, which is why the handler
+    # declares python.required = 3.13. Watched fail: with the handler on the
+    # other Python (3.9 in July, against cp39 libs) this gets 500 "bad character
+    # (49) in reply size". splunkd.log does not record that error, so only the
+    # REST response can catch it.
     status, body = splunk.post_json("/services/pii_detection", {"text": SAMPLE})
     assert status == 200, body[:600]
     found = {r["text"] for r in json.loads(body)["pii_results"]}
